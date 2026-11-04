@@ -388,3 +388,22 @@ Either the block we bind is not the one the shader indexes, or the constant text
 
 Next measurement: read the constant *texture* back at draw time (`glGetTexImage` on `vs_c5_1`) instead of the source
 buffer, and compare element 8 against the buffer.
+
+## 0147–0150: found it — the scene draws run with no vertex buffer bound
+
+Identity constants (`NX_CBUF_IDENTITY=1`) changed nothing: scene target still `max=0`, so constants are not the cause.
+FBO is fine: `fbo=3 status=0x8cd5` (COMPLETE) for all 27 scene draws, `err=0x0`.
+
+Vertex state at the draw (`NX_VB_CHECK`):
+
+```
+NVN_VB a=0 en=1 sz=3 ty=0x1406 stride=20 gsz=0 mok=0 ptr=0x3ac801000
+NVN_VB a=1 en=1 sz=2 ty=0x1406 stride=20 gsz=0 mok=0 ptr=0x3ac80100c
+idx=0,0,0,0,0,0
+```
+
+`gsz=0` — **no array buffer is bound** at draw time; the attribute pointers are raw guest addresses
+(`0x3ac801000`). On GLES an attrib pointer with no bound VBO reads nothing, so every vertex arrives as zero and
+every triangle is degenerate: clean state, complete FBO, valid constants, zero pixels. That is the black screen.
+
+The 1024×32 strip renders because it goes through a different path that does bind a buffer.

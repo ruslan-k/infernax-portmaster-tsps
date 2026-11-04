@@ -169,3 +169,18 @@ With red in front of them, the program-2 draws change no pixel. Ruled out in the
 - geometry is submitted: `NVN_DRAW_GEOM prim=0x4 count=6 indices=1`.
 
 What is left is that the vertex stage collapses the triangles: the transform program 2 reads is zero/wrong (cbuf or UBO binding) rather than the matrix the oracle computed. Next probe: dump the actual transform constants bound for program 2 at its draw, not the ones we believe we sent.
+
+## 0116–0120: not MRT, and the two draws carry different transforms
+
+- `NVN_DRAW_BUFS`: one attachment (`att0=0x1702/79`), `read=draw0=GL_COLOR_ATTACHMENT0`, no MRT — that hypothesis is dead.
+- Draw 1 and draws 2+ share the same program (2), the same FBO attachment (79) and the same attribute layout (`[0 sz=3 st=48] [1 sz=2 st=48]`), yet only draw 1 writes. So the difference must be per-draw constants.
+- `MOMO_UNIFORM_DUMP=2` gives draw 2's constants:
+```
+vs_c4_1 (64B): | 0.0015625 0 0 0 | 0 -0.0027778 0 0 | 0 0 -0.001 0 | -1 -1 0.9003 1 |
+vs_c5_1 (384B): | 4000 0 0 0 | 0 4000 0 0 | 0 0 1 0 | 640 2000 -98 1 |
+```
+  and draw 1's, which does render, is `| 2 0 0 0 | 0 -2 0 0 | ... | -1 1 0.99 1 |` (NDC-space quad).
+- Reading those two: world → ortho maps `y` through `-2/720` with `ty=-1`, so world `y∈[2000,2720]` lands at NDC `[-6.6,-8.6]` — entirely off-screen. Either the vertex stage combines them differently than assumed, or the y translation is wrong for this target.
+- Next probe: read the actual VS for pair 2/0 (`infernax-shaders-draft.h`) and check how `vs_c4_1`/`vs_c5_1`/`vs_c3` combine, instead of inferring from the matrices.
+
+Probe of the client vertex buffer (`NVN_DRAW_VERTS`, glMapBufferRange) printed nothing — the draw does not come from a mapped GL buffer, so vertex positions must be read from guest memory at the attribute address instead.

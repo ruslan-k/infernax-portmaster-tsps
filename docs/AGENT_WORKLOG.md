@@ -224,3 +224,15 @@ Next: dump whole targets to PPM (`NX_DUMP_FRAME`), because a centre probe cannot
 scene whose content sits away from the middle. The first attempt wrote nothing — the frame gate uses
 `nvn_replay.last_frame`, which is the replay list's own counter and never reaches the requested frame in the
 live stream; the gate has to read the runtime's per-frame counter instead.
+
+## 0128–0129: the presented frame really is black
+
+The on-demand capture works (`SIGUSR1` → `live-0/1/2.png`, 1280×720). All three are black: **0 non-black
+pixels, max channel 0** — so the black screen is not an artefact of the centre-only probe; the image that
+reaches the panel is empty. Meanwhile the frame does write pixels into `0x3ba0073b8` and `0xc656990`.
+
+So the loss happens on the way to the presented surface, not in the draw stream alone.
+
+Also new in this run: the guest died with `STOP status=NVN_GUEST_POINTER pc=main.text.seg+0x8356fc
+detail=0x140000001c0` and `exit=24` instead of reaching frame 99. Not explained yet; the only difference
+from the previous run is the `SIGUSR1` sent mid-run, so it may be capture-induced rather than a regression.

@@ -544,3 +544,36 @@ are unchanged, and are not claimed bit-exact to Maxwell arithmetic.
 Append index 16 to form a 17-entry catalogue; all previous 16 source/binding initializers are
 byte-identical and the strict identity boundary remains 15. No native render/loader change.
 All 29 host tests pass. Device testing of this candidate is still pending.
+
+## 0161–0162: full-readback diagnostics isolated; next exact shader frontier
+
+Build 0161 completed with 0 errors / 4 existing warnings and passed all 29 tests against its copied
+native headers. ELF SHA-256: `e92e1e538f83e112ee8d4b6d510cc486947eca02604ab214e2ab0c83b340d871`.
+Atomic installation and independent readback passed; out158 was retained as a verified backup.
+Consultations `infernax-0161-fragment-da00863` and `infernax-0162-probe-cost-da00863` completed.
+
+Arm 0161 hit the unchanged RSS cap at frame 3 (754844 KiB, MemAvailable 50000 KiB), before VS15/FS16.
+The proc snapshot exposes a major accounting caveat: 73 Mali PFNMAP/IO mappings report zero smaps RSS/PSS,
+while status RssFile is 447376 KiB. The smaps rollup RSS of 289188 KiB cannot replace
+RSS as a safety metric. No PSS-based weakening or driver pool/VM/clocks changes were made.
+The asynchronous reader finished 1060 ms after guard because its alarm started only once scheduled;
+parent TERM followed guard by 15 ms and did not wait. The next external controller fixes the remaining
+alarm budget relative to the original guard timestamp, with an incomplete result if scheduling consumes it.
+
+Arm `arm-cl-162-lightprobe-1793833270` changed only the diagnostic workload `NX_PROBE_FULL=1 -> 0`:
+this removes repeated full-target readback/PPM allocations, not game pixels or normal present capture.
+The same ELF and all guard thresholds remained. No full-probe/dump lines were emitted.
+Sampled RSS max was 739844 KiB, MemAvailable min 42560 KiB; no resource guard.
+Both exact receipts appeared (VS15 and FS16), and native pair 15/16 materialized as GL program 5
+(`NVN_LC2_PROGRAM_REAL`), then a new shader identity stopped execution at present frame 210.
+Five KMS live/late captures were still completely black. Real Spruce and exact process cleanup confirmed.
+This one run does not prove a constant RSS saving or fix the black screen.
+
+The next code/control pair is a 1792-byte vertex shader (SPH 1) plus 2176-byte control:
+`ec0f3d6fc3c53e799e7e127b46c9d698e3f1de5cdfc2db2bc088bd53d803ae4c` /
+`6e7d20fde156ddc62627824b245a917d5c4b86e2d6e6a3a4043c2702712371c8`.
+Original and reflection Hades outputs are byte-identical: GLSL
+`e4559b14bc7e8ba28ef16ef95cfeae6112c2f444324e5106cfc05f794752cb4e`, SPIR-V
+`9e6deadd029e52cc1136e7a252be7f8deaafed8d79ded2381edc5b5d4047909b`.
+Candidate 0163 appends index 17 only, preserving all previous 17 initializers and the strict boundary 15.
+No native renderer change; device result remains pending.

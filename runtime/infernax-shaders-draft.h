@@ -4,7 +4,7 @@
  * NOT translated and the runtime stops on them by design. */
 #include <stddef.h>
 #include <stdint.h>
-#define ZERO_ZX_SHADER_PACKAGES 16
+#define ZERO_ZX_SHADER_PACKAGES 17
 #define ZERO_SHADER_VARYING_SLOTS 8
 #define INFERNAX_SEPARATE_SAMPLERS 1
 #define INFERNAX_STRICT_SHADER_FIRST 15
@@ -731,6 +731,29 @@ static const struct {const char *original,*gles;unsigned stage;} nvn_shader_sour
 	 "    gl_Position.w = fma(_166, texelFetch(vs_c3, ivec2((int(31u) >> 2) & 1023, int(31u) >> 12), 0)[int(31u) & 3], fma(_162, texelFetch(vs_c3, ivec2((int(27u) >> 2) & 1023, int(27u) >> 12), 0)[int(27u) & 3], fma(_124, texelFetch(vs_c3, ivec2((int(19u) >> 2) & 1023, int(19u) >> 12), 0)[int(19u) & 3], _111 * texelFetch(vs_c3, ivec2((int(23u) >> 2) & 1023, int(23u) >> 12), 0)[int(23u) & 3])));\n"
 	 "}\n"
 	 "", 0},
+
+	/* 16 frontier-b1a49d9c-c7e6cd7d fragment */
+	{"", ""
+	 "#version 310 es\n"
+	 "precision highp int;\n"
+	 "precision mediump float;\n"
+	 "#define fma(a, b, c) ((a) * (b) + (c))\n"
+	 "uniform sampler2D fs_tex2_168;\n"
+	 "\n"
+	 "in vec4 varying_0;\n"
+	 "in vec4 varying_1;\n"
+	 "in vec4 varying_2;\n"
+	 "layout(location = 0) out vec4 frag_color0;\n"
+	 "\n"
+	 "void main()\n"
+	 "{\n"
+	 "    vec4 _46 = texture(fs_tex2_168, vec2(varying_2.x, varying_2.y));\n"
+	 "    frag_color0.x = fma(_46.x, varying_0.x, varying_1.x);\n"
+	 "    frag_color0.y = fma(_46.y, varying_0.y, varying_1.y);\n"
+	 "    frag_color0.z = fma(_46.z, varying_0.z, varying_1.z);\n"
+	 "    frag_color0.w = fma(_46.w, varying_0.w, varying_1.w);\n"
+	 "}\n"
+	 "", 1},
 };
 
 struct mm_shader_uniform {const char *name;unsigned stage,binding,offset,size,components,word_boolean,word_int,word_array;};
@@ -857,4 +880,12 @@ static const struct mm_shader_binding nvn_megaman_shader_bindings[]={
   .code_hash={0xf2,0x7d,0xd3,0xd9,0x3d,0xf9,0x9f,0x91,0xaf,0x7a,0x59,0x4c,0xee,0x49,0x3a,0x7d,0x00,0x4e,0xa2,0xda,0x86,0xa3,0xfd,0x11,0x1d,0xb4,0xc9,0x45,0x00,0x68,0x4f,0x21},.control_hash={0x4d,0x21,0x99,0x46,0x7e,0xe6,0x0c,0xe3,0x5f,0x0f,0x39,0x2d,0xff,0x5c,0x92,0xae,0xf8,0x2e,0x2f,0x12,0x58,0x3e,0x4f,0x8e,0xa0,0x16,0x6f,0x6e,0x4a,0x7f,0xdb,0x3a},
   .samplers={},
   .attributes={{.name="in_attr0",.location=0,.kind=0},{.name="in_attr1",.location=1,.kind=0},{.name="in_attr2",.location=2,.kind=0},{.name="in_attr3",.location=3,.kind=0}}},
+
+ /* 16 frontier-b1a49d9c-c7e6cd7d fragment */
+ {.sha256="b1a49d9c2f4b167cef4d73c3af8197a3",.error=NULL,.control_size=2176,.code_size=512,.sampler_count=1,.attribute_count=3,.color_write_mask=15,.requires_fragment_highp=0,.requires_fragment_mediump=1,.wave_contract=0,
+  .uniform_count=0,.uniforms={},
+  .varying_read_masks={15,15,3,0,0,0,0,0},.varying_write_masks={15,0,0,0,0,0,0,0},
+  .code_hash={0xb1,0xa4,0x9d,0x9c,0x2f,0x4b,0x16,0x7c,0xef,0x4d,0x73,0xc3,0xaf,0x81,0x97,0xa3,0xea,0x2c,0x56,0x74,0xc5,0x5d,0xbd,0x79,0xfc,0x3b,0xc0,0x4e,0xcd,0xd9,0xf8,0xa4},.control_hash={0xc7,0xe6,0xcd,0x7d,0x47,0x10,0xa4,0x7d,0x40,0x7f,0x7a,0x2f,0x4b,0x64,0x47,0x68,0x15,0x2b,0x46,0x31,0x03,0x07,0x8f,0xd9,0x15,0x6f,0xa5,0xcf,0x43,0xfd,0x9e,0xf6},
+  .samplers={{.name="fs_tex2_168",.stage=1,.binding=14,.offset=328,.size_query=1,.texel_fetch_bits=0,.cpu_view=0,.separate_sampler=1,.sampler_offset=1384}},
+  .attributes={{.name="in_attr0",.location=0,.kind=0},{.name="in_attr1",.location=1,.kind=0},{.name="in_attr2",.location=2,.kind=0}}},
 };

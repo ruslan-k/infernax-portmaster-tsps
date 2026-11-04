@@ -498,3 +498,49 @@ AArch64 ELF, maximum required GLIBC 2.27, unchanged dependency list, SHA-256
 The render, shader and loader sources match the copied build inputs. No 0158 device result yet.
 The next arm must keep memory/watchdog limits, raster state and old catalogue entries unchanged and
 verify exact selection, the next named frontier, real live KMS pixels, and principal-owned cleanup.
+
+## 0158–0160 device arms: startup RSS guards, then exact VS selected and next FS captured
+
+Chatgpt-use consultations `infernax-0158-predevice-e4c3e0f`,
+`infernax-0159-guard-repeat-e4c3e0f`, and `infernax-0160-attribution-e4c3e0f` completed.
+The same out158 ELF was installed atomically, read back independently, and retained on the device.
+Backup `infernax-nextos.bak-out157-before0158` matches the out157 SHA above.
+
+- `arm-ch-158-exact-1793831577`: guard stopped frame 2 at RSS 755504 KiB versus cap 753664 KiB;
+  MemAvailable 54660 KiB, SwapFree 1594796 KiB. The new shader was not encountered.
+- `arm-ci-159-repeat-1793831964`: one unchanged repeat, guard stopped frame 2 at RSS 754152 KiB;
+  MemAvailable 43736 KiB, SwapFree 1543448 KiB. Again no new shader selection. Both exits 137
+  were controller TERM/KILL, not a demonstrated shader crash or kernel OOM.
+- `arm-cj-160-smaps-1793832271`: same ELF, environment and thresholds; an external diagnostic
+  controller could capture bounded proc memory details if the same guard fired. It did not fire:
+  sampled RSS max 737872 KiB, MemAvailable min 50032 KiB. No smaps snapshot was produced,
+  so pool attribution is still unknown. Guard and memory floor were never relaxed.
+
+The third arm emitted exactly one `INFERNAX_EXACT_SHADER index=15 stage=0` with the expected
+`f27dd3d9...` code and `4d219946...` control identities. The previous shader stop is resolved at
+identity lookup. This is not by itself a GPU compile/link receipt. At present frame 122 it reached
+a different missing shader, now with the primary `STOP status=ZERO_SHADER_NOT_PINNED` visible before
+the secondary stack-census SI_TKILL fault. Frame numbers vary with startup timing and are not a
+portable progress ordering; the changed shader identity is the frontier evidence.
+
+The next pair is a fragment shader (SPH stage 5), captured and independently hashed:
+
+- code 512 bytes: `b1a49d9c2f4b167cef4d73c3af8197a3ea2c5674c55dbd79fc3bc04ecdd9f8a4`;
+- control 2176 bytes: `c7e6cd7d4710a47d407f7a2f4b644768152b463103078fd9156fa5cf43fd9ef6`.
+
+Live KMS captures remain fully black. Each arm returned through principal to the real Spruce menu,
+confirmed visually and by empty target/wrapper census and absent handoff. No game-picture success.
+
+## 0161 candidate: append only the captured fragment stage
+
+Both Hades compilers again produce byte-identical outputs:
+GLSL `c77be13c5e1b16875b7c3f5d6897a45d4929ff72a5447e9a2adddcb0686848f2`;
+SPIR-V `8edeb4d635cc7b3ece035924339a8abc75c3184a3a41d2da1901cb2e3da8bce0`.
+The FS samples one texture at varying 2.xy and computes sampled RGBA * varying 0 + varying 1.
+Actual reflection preserves independent texture c2 offset 0x168 and sampler c2 offset 0x568,
+with no fallback or guessed second operand. Existing ESSL FMA-to-mul/add lowering and mediump policy
+are unchanged, and are not claimed bit-exact to Maxwell arithmetic.
+
+Append index 16 to form a 17-entry catalogue; all previous 16 source/binding initializers are
+byte-identical and the strict identity boundary remains 15. No native render/loader change.
+All 29 host tests pass. Device testing of this candidate is still pending.

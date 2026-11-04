@@ -116,7 +116,7 @@ index 59d7398..a15f26a 100644
      if(!nvn_cpu_image_family(t)||t->host_upload_type!=nvn_texture_packed_type(t->b.format))
          stop("NVN_LC2_CPU_PACKED_TYPE",nvn_caller,t->id,24);
 diff --git a/native/nvn_present.h b/native/nvn_present.h
-index 8c0254b..c222a12 100644
+index 8c0254b..9c6d0fa 100644
 --- a/native/nvn_present.h
 +++ b/native/nvn_present.h
 @@ -29,7 +29,8 @@ static void nvn_present_receipt(const char *status,unsigned nonblack,unsigned ma
@@ -129,7 +129,26 @@ index 8c0254b..c222a12 100644
          directory=open(path,O_RDONLY|O_DIRECTORY|O_NOFOLLOW|O_CLOEXEC);
          if(directory<0)stop("NVN_RECEIPT_DIRECTORY_OPEN",nvn_caller,errno,21);
          printf("NVN_VIDEO_RECEIPTS path=%s format=jsonl files=group-N.jsonl group-frames=256 records=one-per-frame\n",path);
-@@ -230,7 +231,32 @@ static unsigned nvn_present_dispatch(unsigned id,struct nvn_frame *f,uint64_t *r
+@@ -158,6 +159,18 @@ static unsigned nvn_present_dispatch(unsigned id,struct nvn_frame *f,uint64_t *r
+         return 1;
+     }
+     nvn_normal_require_materialized(nvn_window.textures[index]);
++    {static unsigned pc;if(pc<8){struct nvn_texture *pt=nvn_window.textures[index];unsigned c=0;unsigned char px[4]={0,0,0,0};
++        unsigned mx=pt?nvn_texture_probe_max(pt,&c,px):0;
++        if(nvn_present.frames==5&&pt&&pt->name){GLint fbo0=0;glGetIntegerv(GL_FRAMEBUFFER_BINDING,&fbo0);GLuint tf=0;glGenFramebuffers(1,&tf);glBindFramebuffer(GL_FRAMEBUFFER,tf);
++            glFramebufferTexture2D(GL_FRAMEBUFFER,GL_COLOR_ATTACHMENT0,GL_TEXTURE_2D,pt->name,0);GLenum st=glCheckFramebufferStatus(GL_FRAMEBUFFER);
++            printf("NVN_SWAP_DUMP status=0x%x %ux%u\n",(unsigned)st,(unsigned)pt->b.width,(unsigned)pt->b.height);
++            if(st==GL_FRAMEBUFFER_COMPLETE){int w=pt->b.width,h=pt->b.height;unsigned char *b=(unsigned char*)malloc((size_t)w*h*4);
++                if(b){glPixelStorei(GL_PACK_ALIGNMENT,1);glReadPixels(0,0,w,h,GL_RGBA,GL_UNSIGNED_BYTE,b);
++                    FILE *fp=fopen("/mnt/SDCARD/Roms/PORTS/infernax/swap.ppm","wb");
++                    if(fp){fprintf(fp,"P6\n%d %d\n255\n",w,h);for(int i=h-1;i>=0;i--)for(int x=0;x<w;x++)fwrite(b+((size_t)i*w+x)*4,1,3,fp);fclose(fp);printf("NVN_SWAP_DUMP wrote=1\n");} else printf("NVN_SWAP_DUMP wrote=0 errno=%d\n",errno);free(b);}}
++            glBindFramebuffer(GL_FRAMEBUFFER,(GLuint)fbo0);glDeleteFramebuffers(1,&tf);}
++        printf("NVN_PRESENT_SRC frame=%u index=%"PRIu64" obj=0x%"PRIx64" name=%u %ux%u centre-max=%u px=%u,%u,%u,%u\n",
++            nvn_present.frames,index,pt?pt->object:0,pt?pt->name:0,pt?(unsigned)pt->b.width:0,pt?(unsigned)pt->b.height:0,mx,px[0],px[1],px[2],px[3]);pc++;}}
+ #ifdef ANIMAL_WELL_SHADERS
+     {   /* AW_NO_PRESENT=1: fps experiment. No GL, no swap: the screen keeps the last frame; ownership and counters
+          * behave as a skipped frame. Placed before the GL mutex like the frameskip path. */
+@@ -230,7 +243,32 @@ static unsigned nvn_present_dispatch(unsigned id,struct nvn_frame *f,uint64_t *r
      nvn_rt_storage_require(t);
      glUniform2f(nvn_present.image_scale,scale*nvn_window.crop[2]/t->b.width,scale_y*nvn_window.crop[3]/t->b.height);
      glUniform2f(nvn_present.image_offset,scale*nvn_window.crop[0]/t->b.width,scale_y*nvn_window.crop[1]/t->b.height);
@@ -162,7 +181,7 @@ index 8c0254b..c222a12 100644
      if(t2_video_needs_readback()) {
          GLint viewport[4];EGLint measured_w=0,measured_h=0;
          glGetIntegerv(GL_VIEWPORT,viewport);
-@@ -314,6 +340,16 @@ static unsigned nvn_present_dispatch(unsigned id,struct nvn_frame *f,uint64_t *r
+@@ -314,6 +352,16 @@ static unsigned nvn_present_dispatch(unsigned id,struct nvn_frame *f,uint64_t *r
      nxgl_frame_proof_before_present(width,height);
      if(!eglSwapInterval(nvn_device.display,0) || !nvn_platform_swap(nvn_device.display,nvn_window.surface))stop("NVN_PRESENT_SWAP_FAILED",nvn_caller,eglGetError(),22);
  #endif

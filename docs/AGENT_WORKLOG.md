@@ -236,3 +236,18 @@ So the loss happens on the way to the presented surface, not in the draw stream 
 Also new in this run: the guest died with `STOP status=NVN_GUEST_POINTER pc=main.text.seg+0x8356fc
 detail=0x140000001c0` and `exit=24` instead of reaching frame 99. Not explained yet; the only difference
 from the previous run is the `SIGUSR1` sent mid-run, so it may be capture-induced rather than a regression.
+
+## 0130–0132: what actually gets presented
+
+`NVN_PRESENT_SRC` names the presented surface: three 1920×1080 swapchain images
+(`0xc656990`, `0xc656a10`, `0xc656a90`, names 1–3), rotated per frame, all centre-black at present time.
+`0xc656990` is also the target that received `px=0,0,188,255` earlier — the composite does run, it just
+covers almost nothing.
+
+The screen pipeline is therefore: 532 draws into the 1280×720 scene target → composite into a 1920×1080
+swapchain image → blit to fb. The presented images are black because the scene target they sample is black.
+
+The whole-surface dump attempted inside present returns `status=0x0`: at that point the GL context is not
+current (it is made current later in the dispatch), so every GL call there is a no-op. The dump must run
+after `nvn_single_make_current`/the async reader wait, or go through `nvn_private_dump("frame-ppm", ...)`
+which already runs with a live context.

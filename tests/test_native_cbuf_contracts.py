@@ -31,6 +31,7 @@ typedef unsigned GLuint,GLenum; typedef int GLint,GLsizei;
 static unsigned active,bindings[128],generated,copies,last_read,uploads;
 static uint32_t live[16384],uploaded[16384];
 static uint64_t nvn_caller;
+static struct { unsigned draws; } nvn_replay;
 struct nvn_range{uint64_t address,size;};
 static struct{struct nvn_range uniform[2][16];}nvn_render;
 struct unif{unsigned offset,size,binding,stage,kind;char name[64];};

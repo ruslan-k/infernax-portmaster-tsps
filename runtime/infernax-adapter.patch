@@ -1,8 +1,21 @@
 diff --git a/native/loader.c b/native/loader.c
-index 8018af5..576ba4d 100644
+index 8018af5..d904c08 100644
 --- a/native/loader.c
 +++ b/native/loader.c
-@@ -726,7 +726,7 @@ int main(int argc,char **argv) {
+@@ -126,10 +126,11 @@ static void location(struct line *b,uint64_t pc) {
+ }
+ static void momo_thread_census(void);
+ static void stop(const char *why, uint64_t pc, uint64_t detail, int status) {
+-    momo_thread_census();
+     struct line b={0};text(&b,"STOP status=");text(&b,why);text(&b," pc=");location(&b,pc);
+     text(&b," detail=");hex(&b,detail);text(&b," query_memory_calls=");hex(&b,svc_counts[6]);
+     text(&b," tls_trap_reads=");hex(&b,tls_reads);emit(&b);
++    /* Emit the primary fail-closed reason before optional stack diagnostics. */
++    momo_thread_census();
+     if(current_guest_context)trace_frames(current_guest_context);
+     /* Only async-signal-safe syscalls: this path also runs after guest faults. */
+     int memory_fd=open("/proc/self/status",O_RDONLY|O_CLOEXEC);
+@@ -726,7 +727,7 @@ int main(int argc,char **argv) {
      struct rlimit no_core={0,0};setrlimit(RLIMIT_CORE,&no_core);
      struct rlimit address_limit={HOST_ADDRESS_LIMIT,HOST_ADDRESS_LIMIT};
      if(setrlimit(RLIMIT_AS,&address_limit)){perror("diagnostic memory quota");return 1;}
@@ -11,7 +24,7 @@ index 8018af5..576ba4d 100644
      FILE *random=fopen("/dev/urandom","rb");
      if(!random || fread(entropy,1,sizeof(entropy),random)!=sizeof(entropy)){fprintf(stderr,"entropy unavailable\n");return 1;}
      fclose(random);
-@@ -826,7 +826,10 @@ int main(int argc,char **argv) {
+@@ -826,7 +827,10 @@ int main(int argc,char **argv) {
      guest_profile_configure();
      hid_host_initialize();aud_host_initialize();t2_memwatch_start();
      t2_gzram_start(); /* Frente J */
@@ -248,7 +261,7 @@ index 0545586..d490ec7 100644
      nvn_gl_completion.completion_valid=0;
  }
 diff --git a/native/nvn_render.h b/native/nvn_render.h
-index 9713977..8ed0919 100644
+index 9713977..880652f 100644
 --- a/native/nvn_render.h
 +++ b/native/nvn_render.h
 @@ -12,6 +12,10 @@ static struct {
@@ -262,7 +275,7 @@ index 9713977..8ed0919 100644
      uint16_t *indices;unsigned index_capacity;unsigned pass_skipped,aw_deferred_target;uint64_t pass_skips,pass_skipped_draws,pass_materialized;
      unsigned pending_color_valid,pending_mask,pending_depth_valid;float pending_color[4],pending_depth;
      uint8_t stencil_ref[2],stencil_write[2],stencil_compare[2],stencil_known[2];
-@@ -19,6 +23,61 @@ static struct {
+@@ -19,6 +23,152 @@ static struct {
      unsigned momo_quads_reported;
  } nvn_render={.color=0x08030000,.blend={0x110c0000,0x01020102},.depth_state={0x22,0x11181118},.polygon=0x14,.mask=15,
      .multisample={5,0x88888888,0x88888888,0x88888888,0x88888888,0},.line_width=1,.point_size=1};
@@ -321,10 +334,101 @@ index 9713977..8ed0919 100644
 +    }
 +    glActiveTexture((GLenum)saved);
 +}
++/* Bounded, default-off scene contract audit. It never mutates guest data,
++ * attributes, program, raster state, or render-target contents. */
++static unsigned infernax_scene_audit_before(struct nvn_program *p,GLuint program,
++                                           GLenum primitive,GLsizei count,const void *indices) {
++    static unsigned last_frame,shots;
++    unsigned frame=nvn_replay.last_frame+1;
++    if(!nvn_flag_on("NX_SCENE_AUDIT")||!nvn_render.target||p->sources[0]!=2||p->sources[1]!=0||
++       nvn_render.target->b.width!=1280||nvn_render.target->b.height!=720||
++       (frame!=20&&frame!=100))return 0;
++    if(last_frame!=frame){last_frame=frame;shots=0;}
++    if(shots++>=32)return 0;
++    flockfile(stdout);
++    GLint cur=0,linked=0,vao=0,ebo=0,fb=0,db=0,rb=0,attachment=0,atype=0;
++    GLint front=0,cull=0,vp[4]={0},sc[4]={0},mask[4]={0};
++    glGetIntegerv(GL_CURRENT_PROGRAM,(void*)&cur);glGetProgramiv(program,GL_LINK_STATUS,&linked);
++    glGetIntegerv(GL_VERTEX_ARRAY_BINDING,(void*)&vao);glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING,(void*)&ebo);
++    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING,(void*)&fb);glGetIntegerv(GL_DRAW_BUFFER0,(void*)&db);glGetIntegerv(GL_READ_BUFFER,(void*)&rb);
++    glGetFramebufferAttachmentParameteriv(GL_DRAW_FRAMEBUFFER,GL_COLOR_ATTACHMENT0,GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME,&attachment);
++    glGetFramebufferAttachmentParameteriv(GL_DRAW_FRAMEBUFFER,GL_COLOR_ATTACHMENT0,GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE,&atype);
++    glGetIntegerv(GL_FRONT_FACE,(void*)&front);glGetIntegerv(GL_CULL_FACE_MODE,(void*)&cull);
++    glGetIntegerv(GL_VIEWPORT,(void*)vp);glGetIntegerv(GL_SCISSOR_BOX,(void*)sc);glGetIntegerv(GL_COLOR_WRITEMASK,(void*)mask);
++    printf("NX_SCENE_STATE frame=%u draw=%u target=%"PRIu64" pair=%u/%u expected_program=%u current_program=%d linked=%d vao=%d ebo=%d fbo=%d status=0x%x attachment=%d attachment_type=0x%x draw_buffer=0x%x read_buffer=0x%x primitive=0x%x count=%d indexed=%u index_type=0x%x indices=%p cull=%d cullmode=0x%x front=0x%x origin=%u depth_mode=%u vp=%d,%d,%d,%d sc=%d,%d,%d,%d mask=%d%d%d%d depth=%d stencil=%d blend=%d\n",
++        frame,nvn_replay.draws,nvn_render.target->id,p->sources[0],p->sources[1],program,cur,linked,vao,ebo,fb,
++        (unsigned)glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER),attachment,(unsigned)atype,(unsigned)db,(unsigned)rb,
++        (unsigned)primitive,(int)count,indices!=NULL,(unsigned)GL_UNSIGNED_SHORT,indices,(int)glIsEnabled(GL_CULL_FACE),
++        (unsigned)cull,(unsigned)front,nvn_device.window_origin,nvn_device.depth_mode,
++        vp[0],vp[1],vp[2],vp[3],sc[0],sc[1],sc[2],sc[3],mask[0],mask[1],mask[2],mask[3],
++        (int)glIsEnabled(GL_DEPTH_TEST),(int)glIsEnabled(GL_STENCIL_TEST),(int)glIsEnabled(GL_BLEND));
++    GLint active=0;glGetIntegerv(GL_ACTIVE_TEXTURE,(void*)&active);
++    for(unsigned j=0;j<p->uniform_count;j++) {
++        struct nvn_uniform *u=&p->uniforms[j];
++        if(u->location<0||(u->kind!=7&&u->kind!=3))continue;
++        GLint unit=-1,texture=-1,sampler=-1;glGetUniformiv(program,u->location,&unit);
++        if(unit>=0){glActiveTexture(GL_TEXTURE0+unit);glGetIntegerv(GL_TEXTURE_BINDING_2D,(void*)&texture);glGetIntegerv(GL_SAMPLER_BINDING,(void*)&sampler);}
++        printf("NX_SCENE_BIND frame=%u draw=%u name=%s kind=%u stage=%u binding=%u offset=%u unit=%d texture=%d sampler=%d\n",
++               frame,nvn_replay.draws,u->name,u->kind,u->stage,u->binding,u->offset,unit,texture,sampler);
++        if(u->kind==7&&u->stage==0&&(u->binding==1||u->binding==2)) {
++            struct nvn_range range=nvn_render.uniform[u->stage][u->binding];
++            unsigned available=u->offset>=range.size?0:(unsigned)(range.size-u->offset);
++            if(available>160)available=160;
++            const void *source=available?nvn_gpu_pointer(range.address+u->offset,available,PROT_READ):NULL;
++            float v[40]={0};if(source)memcpy(v,source,available);
++            printf("NX_SCENE_BANK frame=%u draw=%u name=%s binding=%u bound_bytes=%"PRIu64" copied=%u source_ok=%u values=",
++                   frame,nvn_replay.draws,u->name,u->binding,range.size,available,source!=NULL);
++            for(unsigned k=0;k<40;k++)printf("%s%.9g",k?",":"",(double)v[k]);
++            putchar('\n');
++        }
++    }
++    glActiveTexture((GLenum)active);
++    unsigned sample=count>0?(unsigned)count:0;if(sample>12)sample=12;
++    unsigned ix[12]={0};unsigned index_ok=!indices||(ebo==0&&nvn_ptr_mapped(indices,(size_t)sample*2));
++    printf("NX_SCENE_INDEX frame=%u draw=%u source_ok=%u truncated=%u values=",frame,nvn_replay.draws,index_ok,(unsigned)(count>(GLsizei)sample));
++    for(unsigned k=0;k<sample;k++) {
++        uint16_t raw=0;if(indices&&index_ok)memcpy(&raw,(const char*)indices+k*2,2);
++        ix[k]=indices?raw:k;printf("%s%u",k?",":"",ix[k]);
++    }
++    putchar('\n');
++    for(unsigned a=0;a<2;a++) {
++        GLint enabled=0,size=0,type=0,stride=0,buffer=0;void *pointer=NULL;
++        glGetVertexAttribiv(a,GL_VERTEX_ATTRIB_ARRAY_ENABLED,&enabled);glGetVertexAttribiv(a,GL_VERTEX_ATTRIB_ARRAY_SIZE,&size);
++        glGetVertexAttribiv(a,GL_VERTEX_ATTRIB_ARRAY_TYPE,&type);glGetVertexAttribiv(a,GL_VERTEX_ATTRIB_ARRAY_STRIDE,&stride);
++        glGetVertexAttribiv(a,GL_VERTEX_ATTRIB_ARRAY_BUFFER_BINDING,&buffer);glGetVertexAttribPointerv(a,GL_VERTEX_ATTRIB_ARRAY_POINTER,&pointer);
++        printf("NX_SCENE_ATTR frame=%u draw=%u attr=%u enabled=%d size=%d type=0x%x stride=%d buffer=%d pointer=%p\n",
++            frame,nvn_replay.draws,a,enabled,size,(unsigned)type,stride,buffer,pointer);
++        if(index_ok&&enabled&&!buffer&&pointer&&type==GL_FLOAT&&size>0&&size<=4&&stride>=0) {
++            unsigned step=stride?(unsigned)stride:(unsigned)size*4;
++            for(unsigned k=0;k<sample;k++) {
++                unsigned duplicate=0;for(unsigned l=0;l<k;l++)if(ix[l]==ix[k])duplicate=1;
++                if(duplicate)continue;
++                const void *source=(const char*)pointer+(size_t)step*ix[k];float v[4]={0,0,0,1};
++                unsigned ok=nvn_ptr_mapped(source,(size_t)size*4);if(ok)memcpy(v,source,(size_t)size*4);
++                printf("NX_SCENE_VERTEX frame=%u draw=%u attr=%u index=%u source_ok=%u values=%.9g,%.9g,%.9g,%.9g\n",
++                       frame,nvn_replay.draws,a,ix[k],ok,(double)v[0],(double)v[1],(double)v[2],(double)v[3]);
++            }
++        }
++    }
++    GLenum error=glGetError();printf("NX_SCENE_AUDIT_ERROR frame=%u draw=%u error=0x%x\n",frame,nvn_replay.draws,(unsigned)error);
++    funlockfile(stdout);
++    return 1;
++}
++static void infernax_scene_audit_after(void) {
++    unsigned w=nvn_render.target->b.width,h=nvn_render.target->b.height;
++    size_t pixels=(size_t)w*h;uint8_t *data=malloc(pixels*4);
++    if(!data){printf("NX_SCENE_PIXELS allocation_failed=1\n");return;}
++    glReadPixels(0,0,(GLsizei)w,(GLsizei)h,GL_RGBA,GL_UNSIGNED_BYTE,data);GLenum error=glGetError();
++    size_t nonblack=0;unsigned maxv=0;
++    if(!error)for(size_t k=0;k<pixels;k++){unsigned v=data[k*4];if(data[k*4+1]>v)v=data[k*4+1];if(data[k*4+2]>v)v=data[k*4+2];nonblack+=v>8;if(v>maxv)maxv=v;}
++    printf("NX_SCENE_PIXELS frame=%u draw=%u target=%"PRIu64" error=0x%x nonblack=%zu max=%u\n",
++           nvn_replay.last_frame+1,nvn_replay.draws,nvn_render.target->id,(unsigned)error,nonblack,maxv);
++    free(data);
++}
  #include "nvn_megaman_raster.h"
  #include "nvn_render_state.h"
  #include "nvn_vertex_stream.h"
-@@ -269,6 +328,33 @@ static unsigned momo_texture_unit(unsigned catalogue_offset,unsigned *ok) {
+@@ -269,6 +419,33 @@ static unsigned momo_texture_unit(unsigned catalogue_offset,unsigned *ok) {
      *ok=0;return 0;
  }
  #endif
@@ -358,7 +462,7 @@ index 9713977..8ed0919 100644
  static struct nvn_sampler_binding nvn_render_sampler_prepare_mode(uint64_t handle,unsigned cpu_view,unsigned real_sample) {
      struct nvn_descriptor *td=nvn_render_descriptor(nvn_replay.texture_pool,1,(uint32_t)handle),*sd=nvn_render_descriptor(nvn_replay.sampler_pool,2,handle>>32);
      struct nvn_texture *t=NULL;struct nvn_sampler *s=NULL;nvn_render_resources(td,sd,&t,&s);
-@@ -314,7 +400,8 @@ static struct nvn_sampler_binding nvn_render_sampler_prepare_mode(uint64_t handl
+@@ -314,7 +491,8 @@ static struct nvn_sampler_binding nvn_render_sampler_prepare_mode(uint64_t handl
      struct nvn_sampler_builder *b=&s->b;
      if((zero_texture_half_channels(t->b.format) || zero_texture_float_channels(t->b.format) || zero_texture_unorm16_channels(t->b.format) || zero_bc_float(t->b.format)) && (b->mag || (b->min!=0 && b->min!=2))) {
          const char *extensions=(const char *)glGetString(GL_EXTENSIONS);
@@ -368,7 +472,7 @@ index 9713977..8ed0919 100644
              stop("ZERO_TEXTURE_FLOAT_LINEAR_REQUIRED",nvn_caller,t->id,20);
      }
      /* Animal Well: samplers carry lodMin=-1000 (below level 0 nothing changes) and a compare mode that its plain
-@@ -374,7 +461,16 @@ static struct nvn_texture *nvn_render_sampler(uint64_t handle,unsigned unit,unsi
+@@ -374,7 +552,16 @@ static struct nvn_texture *nvn_render_sampler(uint64_t handle,unsigned unit,unsi
      else {glBindTexture(GL_TEXTURE_2D,texture_name);nvn_texture_parameters(t,binding.min,binding.mag,
          t->t2_page.mode==T2_PAGE_MODE_COMPACT?GL_CLAMP_TO_EDGE:binding.wrap[0],
          t->t2_page.mode==T2_PAGE_MODE_COMPACT?GL_CLAMP_TO_EDGE:binding.wrap[1]);
@@ -386,7 +490,7 @@ index 9713977..8ed0919 100644
      if(t->host_scaled&&!t->host_scaled_sampled){t->host_scaled_sampled=1;
          printf("NVN_LC2_SCALED_SAMPLE object=0x%"PRIx64" id=%"PRIu64" texture=%u pool=0x%"PRIx64" format=0x%x flags=0x%x target=%"PRIu64" program=%u sources=%u/%u logical=%ux%u actual=%ux%u normalized-UV=unchanged\n",
              t->object,t->id,t->name,t->pool->object,t->b.format,t->b.flags,nvn_render.target->id,nvn_render.program->name,nvn_render.program->sources[0],nvn_render.program->sources[1],t->b.width,t->b.height,width,height);}
-@@ -788,7 +884,7 @@ static void nvn_render_draw_inner(struct nvn_record *r) {
+@@ -788,7 +975,7 @@ static void nvn_render_draw_inner(struct nvn_record *r) {
      }
      unsigned real_sample=!nvn_mfc_omitting_draw() || cadence_stencil;
      if(diagnose) {
@@ -395,7 +499,7 @@ index 9713977..8ed0919 100644
          printf("NVN_DRAW_STATE color=%08x blend=%08x/%08x depth=%08x polygon=%08x mask=%x alpha=%u ref=%g viewport=%d/%d/%d/%d scissor=%d/%d/%d/%d\n",nvn_render.color,nvn_render.blend[0],nvn_render.blend[1],nvn_render.depth_state[0],nvn_render.polygon,nvn_render.mask,alpha,nvn_replay.alpha_ref,vp[0],vp[1],vp[2],vp[3],sc[0],sc[1],sc[2],sc[3]);
      }
      struct nvn_megaman_wave_draw wave={0};nvn_megaman_wave_begin(p,&wave);
-@@ -803,17 +899,77 @@ static void nvn_render_draw_inner(struct nvn_record *r) {
+@@ -803,17 +990,77 @@ static void nvn_render_draw_inner(struct nvn_record *r) {
          if(u->texel_fetch_bits && !u->cpu_view)stop("NVN_LC2_PACKED_TEXTURE_CONTRACT_REQUIRED",nvn_caller,u->texel_fetch_bits,20);
          unsigned bytes=u->kind==1?64:u->kind==2?16:u->kind==3||u->kind==5?8:u->kind==4||u->kind==6?4:0;
          if(u->kind==7) {
@@ -479,7 +583,7 @@ index 9713977..8ed0919 100644
              if(location>=0)glUniform4fv(location,(GLsizei)(n/16),words);
              {GLenum e=glGetError();if(e)printf("NVN_UNIFORM_ARRAY_GL_ERROR bytes=%u vectors=%u error=0x%x\n",n,n/16,e);}
              free(words);
-@@ -862,6 +1018,11 @@ static void nvn_render_draw_inner(struct nvn_record *r) {
+@@ -862,6 +1109,11 @@ static void nvn_render_draw_inner(struct nvn_record *r) {
          }
          if(!bytes || u->size!=bytes)stop("NVN_DRAW_UNIFORM_LAYOUT",nvn_caller,u->size,24);
          union {float values[16];uint64_t handles[8];} snapshot;
@@ -491,7 +595,7 @@ index 9713977..8ed0919 100644
          if(u->kind==3 && u->binding==14) {
              /* SDK BindTexture writes its reserved CB at 0x20+8*slot.
               * Pinned machine TEXS/TLDS/TXQ adds that 0x20 header to the
-@@ -869,8 +1030,20 @@ static void nvn_render_draw_inner(struct nvn_record *r) {
+@@ -869,8 +1121,20 @@ static void nvn_render_draw_inner(struct nvn_record *r) {
               * descriptor handle, rather than NVIDIA's packed low32 form. */
  #ifdef MOMO_SHADERS
              unsigned aligned=1,slot=momo_texture_unit(u->offset,&aligned);
@@ -513,7 +617,7 @@ index 9713977..8ed0919 100644
  #else
              unsigned slot=u->offset/8;
              if(u->stage>1 || u->offset%8 || slot>=128 || !(nvn_render.texture_known[u->stage][slot/64]&(1ULL<<(slot%64))))
-@@ -1088,6 +1261,15 @@ static void nvn_render_draw_inner(struct nvn_record *r) {
+@@ -1088,6 +1352,15 @@ static void nvn_render_draw_inner(struct nvn_record *r) {
                      for(const char *q=o;q&&*q&&nframes<8;){char *e;unsigned long v=strtoul(q,&e,10);if(e==q)break;frames[nframes++]=(unsigned)v;q=(*e==','||*e==':')?e+1:e;}}
                  unsigned trace=t2_pass_probe_active() || (every && (nvn_replay.last_frame+1)%every==0);
                  for(unsigned k=0;k<nframes;k++)if(frames[k]==nvn_replay.last_frame+1)trace=1;
@@ -529,7 +633,7 @@ index 9713977..8ed0919 100644
                  if(trace)
                      printf("T2_DRAW_TEXTURE frame=%u draw=%u pair=%u/%u program=%u sampler=%s unit=%d id=%"PRIu64" size=%ux%u format=0x%x page=%s mode=%u block=%u palettes=%u min=0x%x target=%"PRIu64"\n",
                          nvn_replay.last_frame+1,nvn_replay.draws,p->sources[0],p->sources[1],program,u->name,unit,texture->id,texture->b.width,texture->b.height,texture->b.format,
-@@ -1261,7 +1443,7 @@ static void nvn_render_draw_inner(struct nvn_record *r) {
+@@ -1261,7 +1534,7 @@ static void nvn_render_draw_inner(struct nvn_record *r) {
          if(!cfg){const char *q=getenv("MOMO_ATTR_PAIR");
              if(q){char *end=NULL;pv=(unsigned)strtoul(q,&end,0);pf=end&&*end=='/'?(unsigned)strtoul(end+1,NULL,0):0;on=1;}
              const char *a2=getenv("MOMO_ATTR_AFTER");after=a2?(unsigned)strtoul(a2,NULL,0):0;cfg=1;}
@@ -538,7 +642,7 @@ index 9713977..8ed0919 100644
              attr_pair=1;shots++;
              printf("MOMO_ATTR_AT draw=%u frame=%u pair=%u/%u target=%" PRIu64 " vertices=%" PRIu64 " textures=%u",
                  nvn_replay.draws,nvn_replay.last_frame+1,p->sources[0],p->sources[1],
-@@ -1269,6 +1451,43 @@ static void nvn_render_draw_inner(struct nvn_record *r) {
+@@ -1269,6 +1542,43 @@ static void nvn_render_draw_inner(struct nvn_record *r) {
              for(unsigned k=0;k<pass_texture_count;k++)
                  printf(" %s=id%" PRIu64 "/%ux%u",pass_names[k],pass_textures[k],pass_sizes[k][0],pass_sizes[k][1]);
              putchar('\n');
@@ -582,7 +686,7 @@ index 9713977..8ed0919 100644
          }
      }
      nvn_render_client_buffers();
-@@ -1432,7 +1651,119 @@ static void nvn_render_draw_inner(struct nvn_record *r) {
+@@ -1432,7 +1742,127 @@ static void nvn_render_draw_inner(struct nvn_record *r) {
          uint64_t aw_probe_t0=0;if(tpf && nvn_replay.last_frame+1==tpf){glFinish();aw_probe_t0=nvn_nanoseconds();}
          if(p->aw_noise_location>=0){glActiveTexture(GL_TEXTURE0+7);glBindTexture(GL_TEXTURE_2D,aw_noise.tex);GLint unit=7;nvn_uniform_send(p->aw_noise_location,NVN_UNIFORM_INT,&unit);glActiveTexture(GL_TEXTURE0);}
  #endif
@@ -596,7 +700,9 @@ index 9713977..8ed0919 100644
 +        if(nvn_replay.draws<=8){GLint sc[4]={0,0,0,0};glGetIntegerv(GL_SCISSOR_BOX,sc);{GLint vp[4]={0,0,0,0};glGetIntegerv(GL_VIEWPORT,vp);printf("NVN_DRAW_STATE3 number=%u discard=%d cov=%d a2c=%d smask=%d vp=%d,%d,%d,%d\n",nvn_replay.draws,(int)glIsEnabled(GL_RASTERIZER_DISCARD),(int)glIsEnabled(GL_SAMPLE_COVERAGE),(int)glIsEnabled(GL_SAMPLE_ALPHA_TO_COVERAGE),(int)glIsEnabled(0x8E51),vp[0],vp[1],vp[2],vp[3]);}
 +        printf("NVN_DRAW_STATE2 number=%u cull=%d scissor=%d box=%d,%d,%d,%d blend=%d depthtest=%d\n",nvn_replay.draws,(int)glIsEnabled(GL_CULL_FACE),(int)glIsEnabled(GL_SCISSOR_TEST),sc[0],sc[1],sc[2],sc[3],(int)glIsEnabled(GL_BLEND),(int)glIsEnabled(GL_DEPTH_TEST));}
 +        if(nvn_flag_on("NX_NO_DEPTH_TEST"))glDisable(GL_DEPTH_TEST);
-+        while(glGetError()!=GL_NO_ERROR){}
++        for(GLenum setup_error=glGetError();setup_error!=GL_NO_ERROR;setup_error=glGetError()) {
++            if(nvn_flag_on("NX_SCENE_AUDIT"))printf("NX_SCENE_SETUP_ERROR frame=%u draw=%u error=0x%x\n",nvn_replay.last_frame+1,nvn_replay.draws,(unsigned)setup_error);
++        }
 +        if(nvn_flag_on("NX_CBUF_DUMP")&&nvn_replay.draws<4){
 +          printf("NVN_DRAWCALL number=%u prim=0x%x count=%"PRIu64" indexed=%d idx=%u,%u,%u,%u,%u,%u\n",nvn_replay.draws,primitive,(uint64_t)count,(int)(indices!=NULL),
 +                 indices?(unsigned)((const unsigned short*)indices)[0]:0,indices?(unsigned)((const unsigned short*)indices)[1]:0,indices?(unsigned)((const unsigned short*)indices)[2]:0,
@@ -657,7 +763,7 @@ index 9713977..8ed0919 100644
 +                for(GLsizei k=0;k<cnt;k++){GLint tl=0;glGetShaderiv(sh[k],GL_SHADER_TYPE,&tl);GLint len=0;glGetShaderiv(sh[k],GL_SHADER_SOURCE_LENGTH,&len);
 +                    if(len>0&&len<20000){char *b=(char*)malloc((size_t)len+1);GLsizei got=0;glGetShaderSource(sh[k],len,&got,b);b[got]=0;
 +                        printf("NVN_SHADER_SRC type=%s id=%u len=%d\n%s\nNVN_SHADER_END\n",tl==GL_VERTEX_SHADER?"VERTEX":"FRAGMENT",(unsigned)sh[k],got,b);free(b);}}}
-+            if(nvn_replay.draws<=3){GLboolean cm[4]={0};GLint bm=GL_NONE,be=GL_NONE;
++            if(nvn_replay.draws<=3){GLint cm[4]={0};GLint bm=GL_NONE,be=GL_NONE;
 +                glGetIntegerv(GL_COLOR_WRITEMASK,(void*)cm);glGetIntegerv(GL_BLEND_SRC_RGB,&bm);glGetIntegerv(GL_BLEND_DST_RGB,&be);
 +                printf("NVN_DRAW_WRITE number=%u mask=%d%d%d%d blend=%d src=0x%x dst=0x%x\n",nvn_replay.draws,
 +                       (int)cm[0],(int)cm[1],(int)cm[2],(int)cm[3],(int)glIsEnabled(GL_BLEND),(unsigned)bm,(unsigned)be);}
@@ -695,14 +801,20 @@ index 9713977..8ed0919 100644
 +          printf("NVN_DRAW_STATE target_id=%"PRIu64" target_obj=0x%"PRIx64" %ux%u depth=0x%"PRIx64" pair=%u/%u\n",nvn_render.target?nvn_render.target->id:0,nvn_render.target?nvn_render.target->object:0,nvn_render.target?(unsigned)nvn_render.target->b.width:0,nvn_render.target?(unsigned)nvn_render.target->b.height:0,nvn_render.depth?nvn_render.depth->object:0,nvn_render.program?nvn_render.program->sources[0]:0,nvn_render.program?nvn_render.program->sources[1]:0);
 +          printf("NVN_DRAW_STATE n=%d prog=%d count=%d mask=%d%d%d%d blend=%d(%d,%d) depth=%d func=0x%x wmask=%d stencil=%d scissor_test=%d vp=%d,%d,%d,%d sc=%d,%d,%d,%d\n",
 +            n,prog,(int)count,cm[0],cm[1],cm[2],cm[3],bl,bf[0],bf[1],dt,df,dm,st,sct,vp[0],vp[1],vp[2],vp[3],sc[0],sc[1],sc[2],sc[3]);n++;}}
++        unsigned scene_audit=infernax_scene_audit_before(p,program,primitive,(GLsizei)count,indices);
++        GLuint scene_query=0;
++        if(scene_audit){GLint current_query=0;glGetQueryiv(GL_ANY_SAMPLES_PASSED,GL_CURRENT_QUERY,&current_query);if(!current_query){glGenQueries(1,&scene_query);glBeginQuery(GL_ANY_SAMPLES_PASSED,scene_query);}}
          if(indices)glDrawElements(primitive,count,GL_UNSIGNED_SHORT,indices);else glDrawArrays(primitive,0,count);
++        if(scene_audit){GLenum draw_error=glGetError();printf("NX_SCENE_DRAW_ERROR frame=%u draw=%u error=0x%x\n",nvn_replay.last_frame+1,nvn_replay.draws,(unsigned)draw_error);}
++        if(scene_query){GLuint samples=0;glEndQuery(GL_ANY_SAMPLES_PASSED);glGetQueryObjectuiv(scene_query,GL_QUERY_RESULT,&samples);GLenum query_error=glGetError();printf("NX_SCENE_SAMPLES frame=%u draw=%u samples=%u error=0x%x\n",nvn_replay.last_frame+1,nvn_replay.draws,samples,(unsigned)query_error);glDeleteQueries(1,&scene_query);}
++        if(scene_audit)infernax_scene_audit_after();
 +        if(q_on){GLuint occ=0;GLint db0=-1;glEndQuery(GL_ANY_SAMPLES_PASSED);glGetQueryObjectuiv(q_id,GL_QUERY_RESULT,&occ);glGetIntegerv(GL_DRAW_BUFFER0,&db0);printf("NVN_DRAW_OCCL number=%u samples=%u draw-buffer0=0x%x\n",nvn_replay.draws,occ,(unsigned)db0);glDeleteQueries(1,&q_id);}}
 +        {GLenum de=glGetError();if(de)printf("NVN_DRAW_ERR number=%u err=0x%x indexed=%d count=%"PRIu64" program=%u\n",nvn_replay.draws,(unsigned)de,(int)(indices!=NULL),(uint64_t)count,(unsigned)p->sources[0]);}
 +        if(probe_prog)glUseProgram((GLuint)p->name);}
          zero_depth_draw_end(&depth_draw);nvn_draw_finish_profile();
  #ifdef ANIMAL_WELL_SHADERS
          nvn_render.target->aw_draws_since_clear++;
-@@ -1533,8 +1864,80 @@ static void nvn_render_draw_inner(struct nvn_record *r) {
+@@ -1533,8 +1963,80 @@ static void nvn_render_draw_inner(struct nvn_record *r) {
              }
          }
      }
@@ -785,7 +897,7 @@ index 9713977..8ed0919 100644
  static void nvn_render_draw(struct nvn_record *r) {
      if(!nvn_replay.restart_enabled || r->op==NI_nvnCommandBufferDrawArrays){nvn_render_draw_inner(r);return;}
      unsigned type=r->args[1];uint64_t count=r->args[2];
-@@ -1665,22 +2068,45 @@ static unsigned nvn_render_record(struct nvn_record *r) {
+@@ -1665,22 +2167,45 @@ static unsigned nvn_render_record(struct nvn_record *r) {
          return 1;
      case NI_nvnCommandBufferBindTexture:
          if(a[0]>1 || a[1]>=128)stop("NVN_TEXTURE_BINDING_REQUIRED",nvn_caller,a[1],20);
@@ -832,7 +944,7 @@ index 9713977..8ed0919 100644
          uint64_t targets[2];memcpy(targets,r->payload,16);struct nvn_texture *d=targets[1]?nvn_texture_find(targets[1]):NULL;
  #if ZERO_ZX_GAME
          for(unsigned i=0;i<2;i++)if(a[i?4:2]) {
-@@ -1707,7 +2133,7 @@ static unsigned nvn_render_record(struct nvn_record *r) {
+@@ -1707,7 +2232,7 @@ static unsigned nvn_render_record(struct nvn_record *r) {
          }
          struct nvn_texture *t=nvn_texture_find(targets[0]);
          nvn_cpu_image_require_target(t);nvn_cpu_image_require_target(d);
@@ -841,7 +953,7 @@ index 9713977..8ed0919 100644
          nvn_mfc_target(t);nvn_mfc_target(d);
          t->composition_target_seen=1;t->composition_initial_uniform=0;
          zero_texture_storage_state(t)->composition_target_seen=1;
-@@ -1726,9 +2152,9 @@ static unsigned nvn_render_record(struct nvn_record *r) {
+@@ -1726,9 +2251,9 @@ static unsigned nvn_render_record(struct nvn_record *r) {
              nvn_render.pending_color_valid=nvn_render.pending_depth_valid=0;aw_deferred.passes++;return 1;
          }
  #endif
@@ -853,7 +965,7 @@ index 9713977..8ed0919 100644
          /* Opt-in COTM_DEPTH_DISCARD_ALL: every pass clears its depth on entry,
           * so the depth tiles of the pass being left never need a write-back. */
          static int dd_configured;static unsigned dd_enabled;static uint64_t dd_count;
-@@ -1744,7 +2170,7 @@ static unsigned nvn_render_record(struct nvn_record *r) {
+@@ -1744,7 +2269,7 @@ static unsigned nvn_render_record(struct nvn_record *r) {
          if(!skip_configured){const char *o=getenv("COTM_NORMAL_PASS_SKIP");skip_enabled=o&&!strcmp(o,"1");skip_configured=1;if(skip_enabled)printf("NVN_NORMAL_PASS_SKIP_EXPERIMENT enabled=1 skipped=bind+clears of guarded normal targets\n");}
          nvn_render.pass_skipped=skip_enabled&&t->normal_guarded&&nvn_low_color(t)<0;
          if(nvn_render.pass_skipped){nvn_render.framebuffer=0;nvn_render.target=t;nvn_render.depth=d;nvn_render.pass_skips++;nvn_render.pending_color_valid=nvn_render.pending_depth_valid=0;return 1;}
@@ -898,7 +1010,7 @@ index 8d9b110..3d156d1 100644
 +    GLenum error=glGetError();if(error){printf("NVN_GL_ERROR op=%s error=0x%x\n",nvn_replay_last_op,(unsigned)error);stop("NVN_REPLAY_GL_ERROR",nvn_caller,error,21);}
  }
 diff --git a/native/nvn_shaders.h b/native/nvn_shaders.h
-index f12a975..26184d8 100644
+index f12a975..56cafb0 100644
 --- a/native/nvn_shaders.h
 +++ b/native/nvn_shaders.h
 @@ -20,7 +20,7 @@
@@ -910,7 +1022,29 @@ index f12a975..26184d8 100644
      GLint zero_mip_mask,zero_mip_last,zero_r8_mode,zero_r8_add,zero_r8_use,swizzle_location;unsigned zero_mip_slot;
      GLint t2_palette,t2_blockmap,t2_compact,t2_compact4;unsigned t2_sampler;   /* palette/map/compact-domain uniforms, per fragment sampler */};
  /* kind: 1 mat4, 2 vec4, 3 handle, 4 float, 5 vec2, 6 native uint32 != 0, 7 vec4 array (Animal Well dynamic cbuffer range). */
-@@ -92,6 +92,16 @@ static unsigned nvn_megaman_shader_match(uint64_t code,uint64_t control) {
+@@ -86,12 +86,37 @@ static unsigned nvn_megaman_shader_match(uint64_t code,uint64_t control) {
+     for(unsigned i=0;i<sizeof(nvn_megaman_shader_bindings)/sizeof(nvn_megaman_shader_bindings[0]);i++) {
+         const struct mm_shader_binding *m=&nvn_megaman_shader_bindings[i];
+ #ifdef MOMO_SHADERS
+-        if(m->code_size==code_size && m->control_size==control_size && !memcmp(code_hash,m->code_hash,32)) {
++        unsigned exact_control=1;
++#ifdef INFERNAX_STRICT_SHADER_FIRST
++        if(i>=INFERNAX_STRICT_SHADER_FIRST)exact_control=!memcmp(control_hash,m->control_hash,32);
++#endif
++        if(m->code_size==code_size && m->control_size==control_size && !memcmp(code_hash,m->code_hash,32) && exact_control) {
++#ifdef INFERNAX_STRICT_SHADER_FIRST
++            if(i>=INFERNAX_STRICT_SHADER_FIRST) {
++                static unsigned char receipt[sizeof(nvn_megaman_shader_bindings)/sizeof(nvn_megaman_shader_bindings[0])];
++                if(!receipt[i]) {
++                    printf("INFERNAX_EXACT_SHADER index=%u stage=%u code-sha256=",i,nvn_shader_sources[i].stage);
++                    for(unsigned k=0;k<32;k++)printf("%02x",code_hash[k]);
++                    printf(" control-sha256=");for(unsigned k=0;k<32;k++)printf("%02x",control_hash[k]);putchar('\n');
++                    receipt[i]=1;
++                }
++            }
++#endif
+             /* MOMO_CONTROL_DUMP=<index>: the control section of every program that resolves to that
+              * catalogue entry. Two Unity programs can share identical machine code and differ only in
               * their control section, and the entry is matched by the code hash alone; the constants of
               * one of them are read one vec4 early (MEDIDO run momo-174). */
              static unsigned dumped;
@@ -927,7 +1061,7 @@ index f12a975..26184d8 100644
              const char *want=getenv("MOMO_CONTROL_DUMP");
              if(want && (unsigned)strtoul(want,NULL,0)==i && dumped<4) {
                  nvn_private_dump("control",i*16+dumped,head,control_size);
-@@ -121,6 +131,13 @@ static unsigned nvn_megaman_shader_match(uint64_t code,uint64_t control) {
+@@ -121,6 +146,13 @@ static unsigned nvn_megaman_shader_match(uint64_t code,uint64_t control) {
      nvn_private_dump("zero-shader-control",0,head,control_size);
      nvn_private_dump("zero-shader-code",0,nvn_gpu_pointer(code,code_size,PROT_READ),code_size);
  #endif
@@ -941,7 +1075,7 @@ index f12a975..26184d8 100644
      stop("ZERO_SHADER_NOT_PINNED",nvn_caller,control,20);return UINT32_MAX;
  #else
      const uint8_t *head=nvn_pointer(control,0x20,PROT_READ);
-@@ -186,6 +203,13 @@ static void nvn_megaman_uniforms(struct nvn_program *p,unsigned source) {
+@@ -186,6 +218,13 @@ static void nvn_megaman_uniforms(struct nvn_program *p,unsigned source) {
              stop("NVN_LC2_SAMPLER_METADATA",nvn_caller,source,24);
          strcpy(u->name,v->name);u->stage=v->stage;u->binding=v->binding;u->offset=v->offset;u->size=8;u->kind=3;u->size_location=-1;
          u->texel_fetch_bits=v->texel_fetch_bits;u->cpu_view=v->cpu_view;
@@ -955,7 +1089,7 @@ index f12a975..26184d8 100644
          u->zero_mip_mask=u->zero_mip_last=-1;u->zero_mip_slot=i;
          u->t2_palette=u->t2_blockmap=u->t2_compact=u->t2_compact4=-1;u->t2_sampler=i;
          if(p->t2_page_key&(1u<<i)) {
-@@ -450,6 +474,14 @@ static void nvn_program_link(struct nvn_program *p) {
+@@ -450,6 +489,14 @@ static void nvn_program_link(struct nvn_program *p) {
                          printf("MOMO_DIAG_NOCLIP_INSTALLED program=%u vertex=%u fragment=%u\n",p->name,p->sources[0],p->sources[1]);}
                  }
              }
@@ -970,6 +1104,22 @@ index f12a975..26184d8 100644
              char *red=NULL;
              const char *red_option=getenv("MOMO_DIAG_RED");
              /* MOMO_DIAG_RED=<fragment index> paints only that fragment source red, which localizes one
+@@ -467,6 +514,7 @@ static void nvn_program_link(struct nvn_program *p) {
+             }
+             {const char *echo=getenv("NX_SHADER_ECHO");if(echo&&!strcmp(echo,"1")){printf("NVN_SHADER_ECHO stage=%u index=%u bytes=",i,p->sources[i]);for(unsigned k=0;k<32&&source[k];k++)printf("%02x",(unsigned char)source[k]);printf(" head=%.120s\n",source);}}
+             glShaderSource(shaders[i],1,&source,NULL);glCompileShader(shaders[i]);GLint status=0;glGetShaderiv(shaders[i],GL_COMPILE_STATUS,&status);
++            if(nvn_flag_on("NX_SCENE_AUDIT")&&p->sources[0]==2&&p->sources[1]==0)printf("NX_SCENE_COMPILE pair=2/0 stage=%u shader=%u status=%d\n",i,shaders[i],status);
+             free(red);free(quad);free(noclip);free(t2page);free(compact_uv);
+             free(premul);free(probe);free(sprite);free(flat);free(scaled);free(awf);free(mipped);free(r8);free(advent);free(lowered);free(wrapped);free(interface_source);
+             if(!status){char log[2048]={0};glGetShaderInfoLog(shaders[i],sizeof(log),NULL,log);printf("NVN_SHADER_COMPILE_ERROR %s\n",log);stop("NVN_SHADER_COMPILE_FAILED",nvn_caller,p->sources[i],21);}
+@@ -474,6 +522,7 @@ static void nvn_program_link(struct nvn_program *p) {
+         }
+         for(unsigned i=0;i<vertex->attribute_count;i++)glBindAttribLocation(p->name,vertex->attributes[i].location,vertex->attributes[i].name);
+         glLinkProgram(p->name);GLint status=0;glGetProgramiv(p->name,GL_LINK_STATUS,&status);
++        if(nvn_flag_on("NX_SCENE_AUDIT")&&p->sources[0]==2&&p->sources[1]==0)printf("NX_SCENE_LINK pair=2/0 program=%u status=%d\n",p->name,status);
+         if(!status){char log[2048]={0};glGetProgramInfoLog(p->name,sizeof(log),NULL,log);printf("NVN_PROGRAM_LINK_ERROR %s\n",log);stop("NVN_PROGRAM_LINK_FAILED",nvn_caller,p->name,21);}
+         for(unsigned i=0;i<vertex->attribute_count;i++) {
+             GLint actual=glGetAttribLocation(p->name,vertex->attributes[i].name);
 diff --git a/native/nvn_texture_formats.h b/native/nvn_texture_formats.h
 index 622c0b3..2a2d741 100644
 --- a/native/nvn_texture_formats.h

@@ -450,3 +450,51 @@ still `max=0`), the transform is not the only blocker — the draw itself is bei
 Next: inject a hardcoded full-screen quad into the vertex stage of this program (attribute-independent). Rasterizing
 proves FBO+draw path are fine and narrows it to attribute/transform semantics; still empty means the draw call is
 dropped before rasterization.
+
+## 0157: retract the universal non-rasterization claim; measure the real transforms
+
+The conclusion in 0155–0156 above was too strong. Consultations
+`infernax-0157-cull-audit-35e72a8` and `infernax-0158-shader-frontier-f27dd3d9`
+were completed through chatgpt-use. No fullscreen vertex substitution or matrix/cull override was made.
+
+A bounded `NX_SCENE_AUDIT=1` measured pair 2/0 at frames 20 and 100, four rectangles at each frame.
+The current/expected GL program matched, both stages compiled and the program linked, indices were
+`0,1,2,2,1,3`, and immediate post-draw GL errors were zero. Full-target readbacks were black and
+occlusion queries returned zero. CPU reproduction from the measured guest vertices and constants
+places these eight rectangles outside the visible clip interior. That explains these draws without
+proving a broken rasterizer. GPU constant-texture contents and other passes remain unqualified.
+The historical text above is retained as an evidence trail, not an accepted diagnosis.
+
+Run `arm-cg-157-contract-1793829993` reached frame 138, then encountered an unrecognized vertex shader:
+
+- code: `f27dd3d93df99f91af7a594cee493a7d004ea2da86a3fd111db4c94500684f21` (1024 bytes);
+- control: `4d2199467ee60ce35f0f392dff5c92aef82e2f12583e4f8ea0166f6e4a7fdb3a` (2176 bytes).
+
+Live KMS was black; a fresh cleanup KMS capture showed the real Spruce menu. No game-picture success.
+Build 0157, its arm config, and independent device read-back all agree on SHA-256
+`bd714907a89fff3891e579e78b0d767c35fb06b9f7479bcea2f375177b0529ff`.
+The different hash recorded in the 0158 consultation context was an attribution error, not the installed ELF.
+
+## 0158: exact frontier translation, host verification complete; device arm pending
+
+Both the original Hades compiler and the reflection build produced byte-identical GLSL and SPIR-V
+from the verified captured pair. GLSL SHA-256:
+`48e91692196e03b2811236c447403b05b38141b6ff0f5053ddf2b06d5b1d7f2a`;
+SPIR-V: `44415320c20ef41aaca42748ebe7a71397b73ab21ae20ce53c494ee65da596a5`.
+The owner blobs remain outside the repository.
+
+Append one translated entry (index 15): preserve all 15 previous source/binding initializers byte-for-byte
+and require code AND control hashes for the new entry. Its code hash does not collide with any legacy entry.
+`INFERNAX_EXACT_SHADER` provides a one-shot identity receipt. Emit the primary STOP line before optional
+thread/stack diagnostics, which could otherwise obscure the first fail-closed reason.
+
+All 29 host tests pass against the exact native headers copied into out158. The test harness now declares
+the replay draw counter referenced by the existing optional upload trace; production upload code is unchanged.
+The initial suite invocation lacked `INFERNAX_NATIVE_HEADER`; a second exposed that stale fixture declaration.
+
+Build 0158 completed with no compile errors and four existing ignored-write-result warnings:
+AArch64 ELF, maximum required GLIBC 2.27, unchanged dependency list, SHA-256
+`2511cb399842178f79a81c3915f3b5262323e00b0236be63fd51f22f1b0730e6`.
+The render, shader and loader sources match the copied build inputs. No 0158 device result yet.
+The next arm must keep memory/watchdog limits, raster state and old catalogue entries unchanged and
+verify exact selection, the next named frontier, real live KMS pixels, and principal-owned cleanup.

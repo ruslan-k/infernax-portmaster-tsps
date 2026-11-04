@@ -342,3 +342,36 @@ draws use — the constant-texture path (line ~922, `NX_CBUF_TEXTURE`) is.
 
 Targets per frame, first visit: `133` 1024×32 (pair 14/1) paints to `max=253`; `130` 1280×720 (pair 2/0) stays
 `max=0` for the whole pass; swapchain `id=2/3/4` reaches `max=188` only later.
+
+## 0144–0145: the scene pass ends empty, and its four tiles frame a hole
+
+`NX_TGT_FIRST` now probes the target it is *leaving*, so the number is the state at end of pass:
+
+```
+NVN_TARGET_END id=132 0x3a5113af8 1280x720  max=0     <- scene, after all 27 draws
+NVN_TARGET_END id=134 0x3ba0073b8 1024x32   max=253
+NVN_TARGET_END id=2   0xc656990   1920x1080 max=188
+```
+
+The scene pass really ends with zero pixels — not an artefact of probing too early.
+
+`NX_TILE_TRACE` over the whole frame shows only four distinct world translations, cycling:
+
+```
+(640, 2000)  (3280, -360)  (640, -2720)  (-2000, -360)
+```
+
+Quad half-size 2000 (scale 4000, attr0 = ±0.5). Those four squares cover
+x∈[-1360,2640]/y∈[0,4000], x∈[1280,5280]/y∈[-2360,1640], x∈[-1360,2640]/y∈[-4720,-720],
+x∈[-4000,0]/y∈[-2360,1640] — i.e. they frame the view rectangle exactly and leave the interior uncovered:
+
+```
+        top tile
+   left  [ HOLE ]  right
+        bottom tile
+```
+
+A 2D tile layer cannot do that by accident. It is the signature of a missing rotation/camera stage: the tiles
+are laid out around the view at 45°, with each tile's edges landing on the view edges. Constant `c5` carries a
+pure scale+translation and the shader applies exactly one matrix, so the missing transform is not in the block we
+bind — the next check is the original shader's constant usage against the generated GLSL.

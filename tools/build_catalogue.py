@@ -47,17 +47,25 @@ def cbuf_blocks_of(source):
     with texelFetch. Returns the metadata the runtime needs to bind it.
     """
     out = []
-    # Two shapes reach here: the raw spirv-cross output (with `layout(set = …, binding = …)`) and the
-    # converted tree where those qualifiers were already stripped. The binding is taken when present and
-    # otherwise assigned in declaration order - it is only used to match the guest's bound range.
+    # Hades names a block c<desc.index>, but assigns a separate, dense Vulkan
+    # descriptor Binding. NVN application ranges occupy Maxwell banks3..18.
+    # Reserved/literal banks have no application slot; do not invent one.
     pattern = (r'(?:layout\([^)]*\)\s*)?uniform\s+(\w+)\s*\{[^}]*?\b(?:float|vec4)\s+data\[(\d+)\]'
                r'[^}]*\}\s*(\w+)\s*;')
     for index, m in enumerate(re.finditer(pattern, source, re.S)):
-        binding = index
+        identity = re.fullmatch(r'c(\d+)(?:_\d+)?', m.group(3))
+        if not identity:
+            raise ValueError('Missing raw constant bank identity: ' + m.group(3))
+        raw_bank = int(identity[1])
+        if raw_bank > 18:
+            raise ValueError('Unsupported raw constant bank: ' + m.group(3))
+        binding = raw_bank - 3 if raw_bank >= 3 else None
+        spirv_binding = None
         layout = re.search(r'layout\([^)]*binding\s*=\s*(\d+)[^)]*\)\s*uniform\s+' + re.escape(m.group(1)), source)
         if layout:
-            binding = int(layout.group(1))
+            spirv_binding = int(layout.group(1))
         out.append({'set': 0, 'binding': binding, 'block': m.group(1),
+                    'raw_bank': raw_bank, 'spirv_binding': spirv_binding,
                     'count': int(m.group(2)), 'instance': m.group(3)})
     return out
 
@@ -75,7 +83,15 @@ def rewrite_cbuf_blocks(body, blocks):
                           % (b['instance'], m.group(1), m.group(1), m.group(1)), body)
     return body
 
-def rewrite_essl100(source, stage):
+def namespace_cbuf_uniforms(body, blocks, stage):
+    prefix = 'vs_' if stage == 'vertex' else 'fs_'
+    for b in blocks:
+        body = re.sub(r'\b' + re.escape(b['instance']) + r'\b',
+                      prefix + b['instance'], body)
+    return body
+
+
+def rewrite_essl100(source, stage, namespace_cbufs=True):
     """Rewrite the compiler output into one ESSL 3.10 dialect for every program.
 
     Both stages of a program must use the same GLSL version: Mali answers `L0001 Shader languages do not
@@ -149,6 +165,8 @@ def rewrite_essl100(source, stage):
     original = re.sub(r'^#version[^\n]*\n+', '', source)
     uses_texel_fetch = ('texelFetch' in original or 'textureSize' in original or
                         'textureQueryLevels' in original)
+    if namespace_cbufs:
+        body = namespace_cbuf_uniforms(body, blocks, stage)
     return '\n'.join(prelude) + '\n' + body.strip() + '\n', uses_texel_fetch
 
 
@@ -238,19 +256,60 @@ def samplers_of(source):
         if not identity:
             raise ValueError('Missing guest sampler identity: ' + sampler['name'])
         sampler['stage'] = 0 if identity[1] == 'vs' else 1
-        sampler['binding'] = int(identity[2])
-        sampler['offset'] = int(identity[3], 16)
+        sampler['spirv_binding'] = sampler['binding']
+        sampler['raw_bank'] = int(identity[2])
+        sampler['raw_offset'] = int(identity[3], 16)
+        sampler['binding'] = sampler['raw_bank']
+        sampler['offset'] = sampler['raw_offset']
         # This capture tool's TextureBoundBuffer() defaults to 0; bound TEX
         # therefore appears as tex0 even though it is NOT application cbuf 0.
         # The adapter represents SDK BindTexture's reserved bank as binding 14,
         # with catalogue offsets excluding the 0x20-byte hardware header.
         # Verified against live Lamentum BindTexture unit=0 and fs_tex0_20.
-        if sampler['binding'] == 0:
+        if sampler['raw_bank'] in (0, 2):
             if sampler['offset'] < 0x20 or (sampler['offset'] - 0x20) % 8:
                 raise ValueError('Invalid bound texture offset: ' + sampler['name'])
             sampler['binding'] = 14
             sampler['offset'] -= 0x20
+        elif 3 <= sampler['raw_bank'] <= 18:
+            sampler['binding'] = sampler['raw_bank'] - 3
+        else:
+            raise ValueError('Unsupported sampler bank: ' + sampler['name'])
     return out
+
+
+def reflected_samplers(source, reflection):
+    samplers = samplers_of(source)
+    rows = {row['name']: row for row in reflection}
+    if len(rows) != len(reflection) or set(rows) != {s['name'] for s in samplers}:
+        raise ValueError('Missing, extra or duplicate sampler reflection')
+    subset = {'raw_stage': 5, 'has_secondary': 1, 'cbuf_index': 2,
+              'secondary_cbuf_index': 2, 'shift_left': 0,
+              'secondary_shift_left': 0, 'count': 1, 'size_shift': 3}
+    for sampler in samplers:
+        row = rows[sampler['name']]
+        descriptor = row['descriptor']
+        if any(type(descriptor.get(k)) is not int or descriptor[k] != v for k, v in subset.items()):
+            raise ValueError('Unsupported separate sampler descriptor: ' + sampler['name'])
+        primary = descriptor.get('cbuf_offset')
+        secondary = descriptor.get('secondary_cbuf_offset')
+        if (sampler['stage'] != 1 or type(primary) is not int or type(secondary) is not int or
+                primary != sampler['raw_offset'] or sampler['raw_bank'] != 2 or
+                not 0 <= primary - 0x168 < 128 * 8 or (primary - 0x168) % 8 or
+                not 0 <= secondary - 0x568 < 128 * 8 or (secondary - 0x568) % 8):
+            raise ValueError('Invalid separate sampler offsets: ' + sampler['name'])
+        layout = re.search(r'layout\(set = \d+, binding = (\d+)\) uniform sampler\w+\s+' + re.escape(sampler['name']) + r';', source)
+        if type(row.get('binding')) is not int or (layout and int(layout[1]) != row['binding']):
+            raise ValueError('Sampler reflection binding mismatch: ' + sampler['name'])
+        sampler.update(spirv_binding=row['binding'], separate_sampler=1, sampler_offset=secondary)
+    return samplers
+
+
+def sampler_initializer(sampler):
+    return ('{.name="%s",.stage=%d,.binding=%d,.offset=%d,.size_query=1,.texel_fetch_bits=0,.cpu_view=0,'
+            '.separate_sampler=%d,.sampler_offset=%d}' %
+            (sampler['name'], sampler['stage'], sampler['binding'], sampler['offset'],
+             sampler.get('separate_sampler', 0), sampler.get('sampler_offset', 0)))
 
 
 def attributes_of(glsl):
@@ -311,9 +370,18 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('workspace', type=pathlib.Path)
     ap.add_argument('output', type=pathlib.Path)
+    ap.add_argument('--sampler-reflection', type=pathlib.Path)
     ap.add_argument('--placeholder', action='store_true',
                     help='emit TEST-ONLY substitutes for programs ESSL cannot express (never a translation)')
     a = ap.parse_args()
+
+    reflection = {}
+    if a.sampler_reflection:
+        for row in json.loads(a.sampler_reflection.read_text()):
+            key = (row['code_sha256'], row['control_sha256'])
+            if key in reflection or not all(re.fullmatch(r'[0-9a-f]{64}', value) for value in key):
+                raise ValueError('Invalid or duplicate shader reflection identity')
+            reflection[key] = row['samplers']
 
     programs = []
     for glsl_path in sorted(a.workspace.glob('*.glsl')):
@@ -325,6 +393,11 @@ def main():
         source = glsl_path.read_text()
         stage = 'fragment' if 'Gl_FragColor' in source or re.search(r'out vec4 frag_color', source) or 'gl_FragColor' in source else 'vertex'
         samplers = samplers_of(source)
+        if any(s['raw_bank'] == 2 for s in samplers):
+            key = tuple(__import__('hashlib').sha256(p.read_bytes()).hexdigest() for p in (code, control))
+            if key not in reflection:
+                raise ValueError('Missing exact shader sampler reflection: ' + name)
+            samplers = reflected_samplers(source, reflection[key])
         needs_fetch = 'texelFetch' in source or 'textureSize' in source or 'textureQueryLevels' in source
         filter = filter_rewrite(source, [s['name'] for s in samplers]) if (stage == 'fragment' and needs_fetch) else None
         placeholder = None
@@ -335,11 +408,17 @@ def main():
         elif filter:
             translated, needs_fetch = filter, False
         else:
-            translated, needs_fetch = rewrite_essl100(source, stage)
+            translated, needs_fetch = rewrite_essl100(source, stage, namespace_cbufs=False)
         translated = normalize_prefix(translated)
         cbufs = cbuf_blocks_of(source)
         translated, literal_names = inline_literal_cbuf(
-            translated, {b['instance'] for b in cbufs}, code.read_bytes(), control.read_bytes())
+            translated, {b['instance'] for b in cbufs if b['raw_bank'] == 1}, code.read_bytes(), control.read_bytes())
+        for b in cbufs:
+            b['stage'] = 0 if stage == 'vertex' else 1
+            b['uniform_name'] = ('vs_' if stage == 'vertex' else 'fs_') + b['instance']
+            if b['binding'] is None and b['instance'] not in literal_names:
+                raise ValueError('Unresolved reserved constant bank: ' + name + ':' + b['instance'])
+        translated = namespace_cbuf_uniforms(translated, cbufs, stage)
         programs.append({
             # Preserve the pre-specialization application-bank mapping.
             'cbufs': [b for b in cbufs if b['instance'] not in literal_names],
@@ -364,7 +443,7 @@ def main():
              ' * NOT translated and the runtime stops on them by design. */',
              '#include <stddef.h>', '#include <stdint.h>',
              '#define ZERO_ZX_SHADER_PACKAGES %d' % max(1, len(programs)),
-             '#define ZERO_SHADER_VARYING_SLOTS 8', '#ifndef MOMO_SHADERS', '#define MOMO_SHADERS 1', '#endif']
+             '#define ZERO_SHADER_VARYING_SLOTS 8', '#define INFERNAX_SEPARATE_SAMPLERS 1', '#ifndef MOMO_SHADERS', '#define MOMO_SHADERS 1', '#endif']
     lines.append('static const struct {const char *original,*gles;unsigned stage;} nvn_shader_sources[]={')
     for i, p in enumerate(programs):
         lines.append('\t/* %d %s %s */' % (i, p['name'], p['stage']))
@@ -375,7 +454,7 @@ def main():
     lines.append('};')
     lines.append('')
     lines.append('struct mm_shader_uniform {const char *name;unsigned stage,binding,offset,size,components,word_boolean,word_int,word_array;};')
-    lines.append('struct mm_shader_sampler {const char *name;unsigned stage,binding,offset,size_query,texel_fetch_bits,cpu_view;};')
+    lines.append('struct mm_shader_sampler {const char *name;unsigned stage,binding,offset,size_query,texel_fetch_bits,cpu_view,separate_sampler,sampler_offset;};')
     lines.append('struct mm_shader_attribute {const char *name;unsigned location,kind;};')
     lines.append('struct mm_shader_binding {')
     lines.append(' const char *sha256,*error;unsigned control_size,code_size;')
@@ -402,14 +481,14 @@ def main():
         # shader reads it through a buffer texture (texelFetch), one texel per four floats.
         lines.append('  .uniform_count=%d,.uniforms={%s},' % (len(p.get('cbufs', [])), ','.join(
             '{.name="%s",.stage=%d,.binding=%d,.offset=0,.size=%d,.components=4,.word_boolean=0,.word_int=0,.word_array=%d}' % (
-                b['instance'], 0 if p['stage'] == 'vertex' else 1, b['binding'],
+                b['uniform_name'], 0 if p['stage'] == 'vertex' else 1, b['binding'],
                 b['count'] * 4, b['count'] // 4)
             for b in p.get('cbufs', []))))
         lines.append('  .varying_read_masks={%s},.varying_write_masks={%s},'
                      % (','.join(str(x) for x in reads), ','.join(str(x) for x in writes)))
         lines.append('  .code_hash={%s},.control_hash={%s},'
                      % (','.join('0x%02x' % b for b in code), ','.join('0x%02x' % b for b in control)))
-        lines.append('  .samplers={%s},' % ','.join('{.name="%s",.stage=%d,.binding=%d,.offset=%d,.size_query=1,.texel_fetch_bits=0,.cpu_view=0}' % (s['name'], s['stage'], s['binding'], s['offset']) for s in p['samplers']))
+        lines.append('  .samplers={%s},' % ','.join(sampler_initializer(s) for s in p['samplers']))
         # Attribute kind must match the NVN vertex format the guest binds: 0 = float, 1 = int,
         # 2 = uint (nvn_vertex_format_decode). The old expression mapped vec4 -> 2 and everything else
         # -> 1, so an ordinary float attribute was announced as uint and the draw stopped on

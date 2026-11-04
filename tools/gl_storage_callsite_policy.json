@@ -1,0 +1,394 @@
+{
+  "adapter_patch_sha256": "6c549b09797a403390d4ced13e770bc35c65f74d70240a01f2ec77f6e258eba4",
+  "audit_scope": "All C/C++ files under native/ and framework/ in the exact build-262 patched source tree. Runtime reachability and physical backing are not inferred.",
+  "call_sites": [
+    {
+      "id": "framework/nxgl/src/nxgl_gles2.c|glBufferData|indirect|nxgl_gles2_pfn_glBufferData|1",
+      "rationale": "Indirect dispatcher candidate found in source tree; inclusion in this build and runtime reach are not proven.",
+      "status": "unknown"
+    },
+    {
+      "id": "framework/nxgl/src/nxgl_gles2.c|glCompressedTexImage2D|indirect|nxgl_gles2_pfn_glCompressedTexImage2D|1",
+      "rationale": "Indirect dispatcher candidate found in source tree; inclusion in this build and runtime reach are not proven.",
+      "status": "unknown"
+    },
+    {
+      "id": "framework/nxgl/src/nxgl_gles2.c|glCopyTexImage2D|indirect|nxgl_gles2_pfn_glCopyTexImage2D|1",
+      "rationale": "Indirect dispatcher candidate found in source tree; inclusion in this build and runtime reach are not proven.",
+      "status": "unknown"
+    },
+    {
+      "id": "framework/nxgl/src/nxgl_gles2.c|glCopyTexSubImage2D|indirect|nxgl_gles2_pfn_glCopyTexSubImage2D|1",
+      "rationale": "Indirect dispatcher candidate found in source tree; inclusion in this build and runtime reach are not proven.",
+      "status": "unknown"
+    },
+    {
+      "id": "framework/nxgl/src/nxgl_gles2.c|glFramebufferRenderbuffer|indirect|nxgl_gles2_pfn_glFramebufferRenderbuffer|1",
+      "rationale": "Indirect dispatcher candidate found in source tree; inclusion in this build and runtime reach are not proven.",
+      "status": "unknown"
+    },
+    {
+      "id": "framework/nxgl/src/nxgl_gles2.c|glFramebufferTexture2D|indirect|nxgl_gles2_pfn_glFramebufferTexture2D|1",
+      "rationale": "Indirect dispatcher candidate found in source tree; inclusion in this build and runtime reach are not proven.",
+      "status": "unknown"
+    },
+    {
+      "id": "framework/nxgl/src/nxgl_gles2.c|glRenderbufferStorage|indirect|nxgl_gles2_pfn_glRenderbufferStorage|1",
+      "rationale": "Indirect dispatcher candidate found in source tree; inclusion in this build and runtime reach are not proven.",
+      "status": "unknown"
+    },
+    {
+      "id": "framework/nxgl/src/nxgl_gles2.c|glTexImage2D|indirect|nxgl_gles2_pfn_glTexImage2D|1",
+      "rationale": "Indirect dispatcher candidate found in source tree; inclusion in this build and runtime reach are not proven.",
+      "status": "unknown"
+    },
+    {
+      "id": "native/momo_stencil_bench.h|glTexImage2D|direct|glTexImage2D|1",
+      "rationale": "Inventoried source callsite; build261 runtime reach, live owner generation, and physical backing are not established.",
+      "status": "unknown"
+    },
+    {
+      "id": "native/momo_stencil_bench.h|glRenderbufferStorage|direct|glRenderbufferStorage|1",
+      "rationale": "Inventoried source callsite; build261 runtime reach, live owner generation, and physical backing are not established.",
+      "status": "unknown"
+    },
+    {
+      "id": "native/momo_stencil_bench.h|glFramebufferTexture2D|direct|glFramebufferTexture2D|1",
+      "rationale": "Inventoried source callsite; build261 runtime reach, live owner generation, and physical backing are not established.",
+      "status": "unknown"
+    },
+    {
+      "id": "native/momo_stencil_bench.h|glFramebufferRenderbuffer|direct|glFramebufferRenderbuffer|1",
+      "rationale": "Inventoried source callsite; build261 runtime reach, live owner generation, and physical backing are not established.",
+      "status": "unknown"
+    },
+    {
+      "id": "native/momo_stencil_bench.h|glFramebufferRenderbuffer|direct|glFramebufferRenderbuffer|2",
+      "rationale": "Inventoried source callsite; build261 runtime reach, live owner generation, and physical backing are not established.",
+      "status": "unknown"
+    },
+    {
+      "id": "native/momo_texture_stats.h|glFramebufferTexture2D|direct|glFramebufferTexture2D|1",
+      "rationale": "Inventoried source callsite; build261 runtime reach, live owner generation, and physical backing are not established.",
+      "status": "unknown"
+    },
+    {
+      "id": "native/nvn_bridge.h|eglCreatePbufferSurface|direct|eglCreatePbufferSurface|1",
+      "rationale": "Inventoried source callsite; build261 runtime reach, live owner generation, and physical backing are not established.",
+      "status": "unknown"
+    },
+    {
+      "id": "native/nvn_direct_composition.h|glCopyTexSubImage2D|direct|glCopyTexSubImage2D|1",
+      "rationale": "Inventoried source callsite; build261 runtime reach, live owner generation, and physical backing are not established.",
+      "status": "unknown"
+    },
+    {
+      "id": "native/nvn_fb_present.h|glTexImage2D|direct|glTexImage2D|1",
+      "rationale": "Inventoried source callsite; build261 runtime reach, live owner generation, and physical backing are not established.",
+      "status": "unknown"
+    },
+    {
+      "id": "native/nvn_fb_present.h|glFramebufferTexture2D|direct|glFramebufferTexture2D|1",
+      "rationale": "Inventoried source callsite; build261 runtime reach, live owner generation, and physical backing are not established.",
+      "status": "unknown"
+    },
+    {
+      "id": "native/nvn_framebuffers.h|glFramebufferTexture2D|direct|glFramebufferTexture2D|1",
+      "rationale": "Inventoried source callsite; build261 runtime reach, live owner generation, and physical backing are not established.",
+      "status": "unknown"
+    },
+    {
+      "id": "native/nvn_framebuffers.h|glFramebufferRenderbuffer|direct|glFramebufferRenderbuffer|1",
+      "rationale": "Inventoried source callsite; build261 runtime reach, live owner generation, and physical backing are not established.",
+      "status": "unknown"
+    },
+    {
+      "id": "native/nvn_framebuffers.h|glFramebufferRenderbuffer|direct|glFramebufferRenderbuffer|2",
+      "rationale": "Inventoried source callsite; build261 runtime reach, live owner generation, and physical backing are not established.",
+      "status": "unknown"
+    },
+    {
+      "id": "native/nvn_megaman_wave.h|glTexImage2D|direct|glTexImage2D|1",
+      "rationale": "Inventoried source callsite; build261 runtime reach, live owner generation, and physical backing are not established.",
+      "status": "unknown"
+    },
+    {
+      "id": "native/nvn_normal_pass.h|glFramebufferTexture2D|direct|glFramebufferTexture2D|1",
+      "rationale": "Inventoried source callsite; build261 runtime reach, live owner generation, and physical backing are not established.",
+      "status": "unknown"
+    },
+    {
+      "id": "native/nvn_packaged_lazy.h|glTexImage2D|direct|glTexImage2D|1",
+      "rationale": "Inventoried source callsite; build261 runtime reach, live owner generation, and physical backing are not established.",
+      "status": "unknown"
+    },
+    {
+      "id": "native/nvn_present.h|glTexImage2D|direct|glTexImage2D|1",
+      "rationale": "Inventoried source callsite; build261 runtime reach, live owner generation, and physical backing are not established.",
+      "status": "unknown"
+    },
+    {
+      "id": "native/nvn_present.h|glFramebufferTexture2D|direct|glFramebufferTexture2D|1",
+      "rationale": "Inventoried source callsite; build261 runtime reach, live owner generation, and physical backing are not established.",
+      "status": "unknown"
+    },
+    {
+      "id": "native/nvn_present.h|glBufferData|direct|glBufferData|1",
+      "rationale": "Patched source records a generation-keyed LC2 respec event after this buffer store; no build261 runtime sample was collected.",
+      "status": "wrapped+unmeasured"
+    },
+    {
+      "id": "native/nvn_present.h|glFramebufferTexture2D|direct|glFramebufferTexture2D|2",
+      "rationale": "Inventoried source callsite; build261 runtime reach, live owner generation, and physical backing are not established.",
+      "status": "unknown"
+    },
+    {
+      "id": "native/nvn_render.h|glTexImage2D|direct|glTexImage2D|1",
+      "rationale": "Inventoried source callsite; build261 runtime reach, live owner generation, and physical backing are not established.",
+      "status": "unknown"
+    },
+    {
+      "id": "native/nvn_render.h|glFramebufferTexture2D|direct|glFramebufferTexture2D|1",
+      "rationale": "Inventoried source callsite; build261 runtime reach, live owner generation, and physical backing are not established.",
+      "status": "unknown"
+    },
+    {
+      "id": "native/nvn_render.h|glBufferData|direct|glBufferData|1",
+      "rationale": "Inventoried source callsite; build261 runtime reach, live owner generation, and physical backing are not established.",
+      "status": "unknown"
+    },
+    {
+      "id": "native/nvn_render.h|glTexImage2D|direct|glTexImage2D|2",
+      "rationale": "Inventoried source callsite; build261 runtime reach, live owner generation, and physical backing are not established.",
+      "status": "unknown"
+    },
+    {
+      "id": "native/nvn_render.h|glFramebufferTexture2D|direct|glFramebufferTexture2D|2",
+      "rationale": "Inventoried source callsite; build261 runtime reach, live owner generation, and physical backing are not established.",
+      "status": "unknown"
+    },
+    {
+      "id": "native/nvn_render.h|glTexImage2D|direct|glTexImage2D|3",
+      "rationale": "Inventoried source callsite; build261 runtime reach, live owner generation, and physical backing are not established.",
+      "status": "unknown"
+    },
+    {
+      "id": "native/nvn_render.h|glTexImage2D|direct|glTexImage2D|4",
+      "rationale": "Inventoried source callsite; build261 runtime reach, live owner generation, and physical backing are not established.",
+      "status": "unknown"
+    },
+    {
+      "id": "native/nvn_render.h|glFramebufferTexture2D|direct|glFramebufferTexture2D|3",
+      "rationale": "Inventoried source callsite; build261 runtime reach, live owner generation, and physical backing are not established.",
+      "status": "unknown"
+    },
+    {
+      "id": "native/nvn_texture_diagnostic.h|glFramebufferTexture2D|direct|glFramebufferTexture2D|1",
+      "rationale": "Inventoried source callsite; build261 runtime reach, live owner generation, and physical backing are not established.",
+      "status": "unknown"
+    },
+    {
+      "id": "native/nvn_textures.h|glTexImage2D|direct|glTexImage2D|1",
+      "rationale": "Patched source records LC2 storage/lifetime events after this GL allocation; no build261 runtime sample was collected.",
+      "status": "wrapped+unmeasured"
+    },
+    {
+      "id": "native/nvn_textures.h|glTexImage2D|direct|glTexImage2D|2",
+      "rationale": "Patched source records LC2 storage/lifetime events after this GL allocation; no build261 runtime sample was collected.",
+      "status": "wrapped+unmeasured"
+    },
+    {
+      "id": "native/nvn_textures.h|glTexImage2D|direct|glTexImage2D|3",
+      "rationale": "Patched source records LC2 storage/lifetime events after this GL allocation; no build261 runtime sample was collected.",
+      "status": "wrapped+unmeasured"
+    },
+    {
+      "id": "native/nvn_textures.h|glTexImage2D|direct|glTexImage2D|4",
+      "rationale": "Patched source records LC2 storage/lifetime events after this GL allocation; no build261 runtime sample was collected.",
+      "status": "wrapped+unmeasured"
+    },
+    {
+      "id": "native/nvn_textures.h|glRenderbufferStorage|direct|glRenderbufferStorage|1",
+      "rationale": "Patched source records LC2 storage/lifetime events after this GL allocation; no build261 runtime sample was collected.",
+      "status": "wrapped+unmeasured"
+    },
+    {
+      "id": "native/nvn_textures.h|glTexImage2D|direct|glTexImage2D|5",
+      "rationale": "Patched source records LC2 storage/lifetime events after this GL allocation; no build261 runtime sample was collected.",
+      "status": "wrapped+unmeasured"
+    },
+    {
+      "id": "native/nvn_textures.h|glTexImage2D|direct|glTexImage2D|6",
+      "rationale": "Patched source records LC2 storage/lifetime events after this GL allocation; no build261 runtime sample was collected.",
+      "status": "wrapped+unmeasured"
+    },
+    {
+      "id": "native/nvn_vertex_stream.h|glBufferData|direct|glBufferData|1",
+      "rationale": "Patched source records a generation-keyed LC2 respec event after this buffer store; no build261 runtime sample was collected.",
+      "status": "wrapped+unmeasured"
+    },
+    {
+      "id": "native/nvn_vertex_stream.h|glBufferData|direct|glBufferData|2",
+      "rationale": "Patched source records a generation-keyed LC2 respec event after this buffer store; no build261 runtime sample was collected.",
+      "status": "wrapped+unmeasured"
+    },
+    {
+      "id": "native/nvn_vertex_stream.h|glBufferData|direct|glBufferData|3",
+      "rationale": "Patched source records a generation-keyed LC2 respec event after this buffer store; no build261 runtime sample was collected.",
+      "status": "wrapped+unmeasured"
+    },
+    {
+      "id": "native/nvn_window.h|eglCreatePbufferSurface|direct|eglCreatePbufferSurface|1",
+      "rationale": "Inventoried source callsite; build261 runtime reach, live owner generation, and physical backing are not established.",
+      "status": "unknown"
+    },
+    {
+      "id": "native/nvn_window.h|eglCreateWindowSurface|direct|eglCreateWindowSurface|1",
+      "rationale": "Source logs queried EGL surface dimensions only; backing/count/CMA remain unknown and no build261 runtime sample was collected.",
+      "status": "wrapped+unmeasured"
+    },
+    {
+      "id": "native/nvn_window.h|glTexImage2D|direct|glTexImage2D|1",
+      "rationale": "Inventoried source callsite; build261 runtime reach, live owner generation, and physical backing are not established.",
+      "status": "unknown"
+    },
+    {
+      "id": "native/nvn_window.h|eglCreateWindowSurface|direct|eglCreateWindowSurface|2",
+      "rationale": "Inventoried source callsite; build261 runtime reach, live owner generation, and physical backing are not established.",
+      "status": "unknown"
+    },
+    {
+      "id": "native/t2_page_cache.h|glTexImage2D|direct|glTexImage2D|1",
+      "rationale": "Inventoried source callsite; build261 runtime reach, live owner generation, and physical backing are not established.",
+      "status": "unknown"
+    },
+    {
+      "id": "native/t2_page_compact_runtime.h|glTexImage2D|direct|glTexImage2D|1",
+      "rationale": "Inventoried source callsite; build261 runtime reach, live owner generation, and physical backing are not established.",
+      "status": "unknown"
+    },
+    {
+      "id": "native/t2_page_compact_runtime.h|glTexImage2D|direct|glTexImage2D|2",
+      "rationale": "Inventoried source callsite; build261 runtime reach, live owner generation, and physical backing are not established.",
+      "status": "unknown"
+    },
+    {
+      "id": "native/t2_page_substitution.h|glTexImage2D|direct|glTexImage2D|1",
+      "rationale": "Inventoried source callsite; build261 runtime reach, live owner generation, and physical backing are not established.",
+      "status": "unknown"
+    },
+    {
+      "id": "native/t2_page_substitution.h|glTexImage2D|direct|glTexImage2D|2",
+      "rationale": "Inventoried source callsite; build261 runtime reach, live owner generation, and physical backing are not established.",
+      "status": "unknown"
+    },
+    {
+      "id": "native/t2_page_substitution.h|glTexImage2D|direct|glTexImage2D|3",
+      "rationale": "Inventoried source callsite; build261 runtime reach, live owner generation, and physical backing are not established.",
+      "status": "unknown"
+    },
+    {
+      "id": "native/t2_page_substitution.h|glTexImage2D|direct|glTexImage2D|4",
+      "rationale": "Inventoried source callsite; build261 runtime reach, live owner generation, and physical backing are not established.",
+      "status": "unknown"
+    },
+    {
+      "id": "native/t2_page_substitution.h|glTexImage2D|direct|glTexImage2D|5",
+      "rationale": "Inventoried source callsite; build261 runtime reach, live owner generation, and physical backing are not established.",
+      "status": "unknown"
+    },
+    {
+      "id": "native/t2_page_substitution.h|glTexImage2D|direct|glTexImage2D|6",
+      "rationale": "Inventoried source callsite; build261 runtime reach, live owner generation, and physical backing are not established.",
+      "status": "unknown"
+    },
+    {
+      "id": "native/t2_page_substitution.h|glTexImage2D|direct|glTexImage2D|7",
+      "rationale": "Inventoried source callsite; build261 runtime reach, live owner generation, and physical backing are not established.",
+      "status": "unknown"
+    },
+    {
+      "id": "native/t2_page_substitution.h|glTexImage2D|direct|glTexImage2D|8",
+      "rationale": "Inventoried source callsite; build261 runtime reach, live owner generation, and physical backing are not established.",
+      "status": "unknown"
+    },
+    {
+      "id": "native/t2_page_substitution.h|glTexImage2D|direct|glTexImage2D|9",
+      "rationale": "Inventoried source callsite; build261 runtime reach, live owner generation, and physical backing are not established.",
+      "status": "unknown"
+    },
+    {
+      "id": "native/t2_page_substitution.h|glFramebufferTexture2D|direct|glFramebufferTexture2D|1",
+      "rationale": "Inventoried source callsite; build261 runtime reach, live owner generation, and physical backing are not established.",
+      "status": "unknown"
+    },
+    {
+      "id": "native/t2_texture_index.h|glTexImage2D|direct|glTexImage2D|1",
+      "rationale": "Inventoried source callsite; build261 runtime reach, live owner generation, and physical backing are not established.",
+      "status": "unknown"
+    },
+    {
+      "id": "native/t2_texture_index.h|glTexImage2D|direct|glTexImage2D|2",
+      "rationale": "Inventoried source callsite; build261 runtime reach, live owner generation, and physical backing are not established.",
+      "status": "unknown"
+    },
+    {
+      "id": "native/t2_texture_index.h|glTexImage2D|direct|glTexImage2D|3",
+      "rationale": "Inventoried source callsite; build261 runtime reach, live owner generation, and physical backing are not established.",
+      "status": "unknown"
+    },
+    {
+      "id": "native/t2_texture_index.h|glTexImage2D|direct|glTexImage2D|4",
+      "rationale": "Inventoried source callsite; build261 runtime reach, live owner generation, and physical backing are not established.",
+      "status": "unknown"
+    },
+    {
+      "id": "native/t2_texture_index.h|glTexImage2D|direct|glTexImage2D|5",
+      "rationale": "Inventoried source callsite; build261 runtime reach, live owner generation, and physical backing are not established.",
+      "status": "unknown"
+    },
+    {
+      "id": "native/t2_texture_stream.h|glTexImage2D|direct|glTexImage2D|1",
+      "rationale": "Inventoried source callsite; build261 runtime reach, live owner generation, and physical backing are not established.",
+      "status": "unknown"
+    },
+    {
+      "id": "native/zero_depth_copy.h|glFramebufferRenderbuffer|direct|glFramebufferRenderbuffer|1",
+      "rationale": "Inventoried source callsite; build261 runtime reach, live owner generation, and physical backing are not established.",
+      "status": "unknown"
+    },
+    {
+      "id": "native/zero_depth_copy.h|glFramebufferRenderbuffer|direct|glFramebufferRenderbuffer|2",
+      "rationale": "Inventoried source callsite; build261 runtime reach, live owner generation, and physical backing are not established.",
+      "status": "unknown"
+    },
+    {
+      "id": "native/zero_depth_framebuffer.h|glFramebufferRenderbuffer|direct|glFramebufferRenderbuffer|1",
+      "rationale": "Inventoried source callsite; build261 runtime reach, live owner generation, and physical backing are not established.",
+      "status": "unknown"
+    },
+    {
+      "id": "native/zero_depth_framebuffer.h|glFramebufferRenderbuffer|direct|glFramebufferRenderbuffer|2",
+      "rationale": "Inventoried source callsite; build261 runtime reach, live owner generation, and physical backing are not established.",
+      "status": "unknown"
+    },
+    {
+      "id": "native/zero_mip_clamp_runtime.h|glTexImage2D|direct|glTexImage2D|1",
+      "rationale": "Inventoried source callsite; build261 runtime reach, live owner generation, and physical backing are not established.",
+      "status": "unknown"
+    },
+    {
+      "id": "native/zero_mip_clamp_runtime.h|glTexImage2D|direct|glTexImage2D|2",
+      "rationale": "Inventoried source callsite; build261 runtime reach, live owner generation, and physical backing are not established.",
+      "status": "unknown"
+    },
+    {
+      "id": "native/zero_texture_readback.h|glFramebufferTexture2D|direct|glFramebufferTexture2D|1",
+      "rationale": "Inventoried source callsite; build261 runtime reach, live owner generation, and physical backing are not established.",
+      "status": "unknown"
+    }
+  ],
+  "schema_version": 1,
+  "source_base_commit": "c8d01ca1fed5adab1ae7ad920605f199bb83a72e",
+  "source_tree_sha256": "1b995ea13bab7aa2afcf865f68006b095a401c3cc71b8321f83c778a052dabfb"
+}

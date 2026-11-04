@@ -1,0 +1,2 @@
+STOP status=ZERO_SHADER_NOT_PINNED pc=main.text.seg+0x876950 detail=0xb7b9200 query_memory_calls=0x97 tls_trap_reads=0x0
+989

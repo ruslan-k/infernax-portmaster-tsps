@@ -1,0 +1,7 @@
+{
+  "section": "/var/home/ruslan/.hermes/cache/scratch/inf-switch/infernax-romfs.section",
+  "section_size": 214932268,
+  "sha256": "2ab01319a6a96e8392ce2951ffc3d30798392e38845ef1ce2df46ea2cc3711da",
+  "romfs_offset": 512,
+  "romfs_size": 214931756
+}

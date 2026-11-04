@@ -52,5 +52,6 @@
     "ssl",
     "time:u",
     "vi:u"
-  ]
+  ],
+  "sdk_version": "14.3.2.0"
 }

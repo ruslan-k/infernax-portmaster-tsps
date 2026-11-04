@@ -129,6 +129,7 @@ def main():
 
     h = ['/* Generated local owner image; not redistributable game payload. */',
          '#define LC2_PROGRAM_ID 0x%xULL' % title_id,
+         '#define LC2_SDK_VERSION_STRING "%s"' % npdm.get('sdk_version', 'unknown'),
          '#define LC2_MAIN_STACK_SIZE %dULL' % int(npdm['main_thread_stack_size'], 16),
          '#define LC2_MAIN_PRIORITY %d' % npdm['main_thread_priority'],
          '#define LC2_MAIN_CORE %d' % npdm['default_cpu_id'],

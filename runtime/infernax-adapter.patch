@@ -1,0 +1,48 @@
+diff --git a/native/loader.c b/native/loader.c
+index 8018af5..93e7ff1 100644
+--- a/native/loader.c
++++ b/native/loader.c
+@@ -726,7 +726,7 @@ int main(int argc,char **argv) {
+     struct rlimit no_core={0,0};setrlimit(RLIMIT_CORE,&no_core);
+     struct rlimit address_limit={HOST_ADDRESS_LIMIT,HOST_ADDRESS_LIMIT};
+     if(setrlimit(RLIMIT_AS,&address_limit)){perror("diagnostic memory quota");return 1;}
+-    printf("START native-aarch64 terminator2d-nextos Terminator-2D-NO-FATE-base-v0 sdk=19.3.9 rtld-entry=0x8000000 shims=Memory,Threads,IPC guest-quota=%lluMiB host-as-limit=%lluMiB heap-limit=%lluMiB; virtual limits are not resident-RAM measurements\n",(unsigned long long)(MEMORY_BUDGET>>20),(unsigned long long)(HOST_ADDRESS_LIMIT>>20),(unsigned long long)(HEAP_LIMIT>>20));
++    printf("START native-aarch64 program-id=0x%llx sdk=%s rtld-entry=0x8000000 shims=Memory,Threads,IPC guest-quota=%lluMiB host-as-limit=%lluMiB heap-limit=%lluMiB; virtual limits are not resident-RAM measurements\n",(unsigned long long)LC2_PROGRAM_ID,LC2_SDK_VERSION_STRING,(unsigned long long)(MEMORY_BUDGET>>20),(unsigned long long)(HOST_ADDRESS_LIMIT>>20),(unsigned long long)(HEAP_LIMIT>>20));
+     FILE *random=fopen("/dev/urandom","rb");
+     if(!random || fread(entropy,1,sizeof(entropy),random)!=sizeof(entropy)){fprintf(stderr,"entropy unavailable\n");return 1;}
+     fclose(random);
+diff --git a/native/nvn_shaders.h b/native/nvn_shaders.h
+index 0fb14ec..9e7deba 100644
+--- a/native/nvn_shaders.h
++++ b/native/nvn_shaders.h
+@@ -113,6 +113,13 @@ static unsigned nvn_megaman_shader_match(uint64_t code,uint64_t control) {
+     nvn_private_dump("zero-shader-control",0,head,control_size);
+     nvn_private_dump("zero-shader-code",0,nvn_gpu_pointer(code,code_size,PROT_READ),code_size);
+ #endif
++    {   /* No catalogue entry: hand the exact program bytes to the translator. */
++        const char *want=getenv("NX_SHADER_DUMP");
++        if(want && !strcmp(want,"1")) {
++            nvn_private_dump("program-control",0,head,control_size);
++            nvn_private_dump("program-code",0,nvn_gpu_pointer(code,code_size,PROT_READ),code_size);
++        }
++    }
+     stop("ZERO_SHADER_NOT_PINNED",nvn_caller,control,20);return UINT32_MAX;
+ #else
+     const uint8_t *head=nvn_pointer(control,0x20,PROT_READ);
+diff --git a/native/t2_lazy_mesh.h b/native/t2_lazy_mesh.h
+index 3da35a8..1b6ef9a 100644
+--- a/native/t2_lazy_mesh.h
++++ b/native/t2_lazy_mesh.h
+@@ -48,8 +48,10 @@ static const struct t2_lazy_mesh_patch { uint64_t offset; uint32_t length; int b
+ /* Called by loader.c right after the segments are read (still writable, before bridges/TLS stubs and rtld).
+  * Default ON; any identity mismatch stops with a named status instead of half-patching. */
+ static void t2_lazy_mesh_apply(const struct image_segment *segs,size_t nsegs) {
+-    const char *env=getenv("T2_LAZY_MESH");
+-    if(env && !strcmp(env,"0")){printf("T2_LAZY_MESH off (T2_LAZY_MESH=0)\n");return;}
++    /* The patch table below is pinned to one title's main.text; any other title
++     * is refused by an identity stop. Opt in only for the title it was measured on. */
++    const char *env=getenv("NX_LAZY_MESH");
++    if(!env || strcmp(env,"1")){printf("lazy-mesh patches not applied (title-pinned; NX_LAZY_MESH=1 opts in)\n");return;}
+     const struct image_segment *t=NULL;
+     for(size_t i=0;i<nsegs;i++)if(!strcmp(segs[i].name,"main.text.seg"))t=&segs[i];
+     if(!t || t->file_size!=T2_LAZY_MESH_TEXT_SIZE)stop("T2_LAZY_MESH_SEGMENT",t?t->base:0,t?t->file_size:0,24);

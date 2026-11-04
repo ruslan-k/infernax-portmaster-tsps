@@ -407,3 +407,26 @@ idx=0,0,0,0,0,0
 every triangle is degenerate: clean state, complete FBO, valid constants, zero pixels. That is the black screen.
 
 The 1024×32 strip renders because it goes through a different path that does bind a buffer.
+
+## 0151–0154: geometry is real; client indices are not the cause
+
+`GL_VERTEX_ARRAY_BUFFER_BINDING` (not the global array binding, which is legitimately 0 with no VAO): `vao=0 abuf=0`
+for both attributes — the scene sets attributes from client pointers, as the design intends for desktop GL.
+
+Guest memory at those pointers holds real data (not zeros):
+
+```
+ptr=0x3ac800800 f=-0.5,-0.5,-3.06e-17,0   0,-1,1,0
+```
+
+So vertices exist and the quad is ±0.5. Enabling `COTM_STREAM_VERTEX_BUFFERS=1` changed nothing (`max=0`), and
+streaming indices through a real element buffer (`nvn_client_indices`) *lost* the present pass (`0xc656990` went
+188 → 0) without gaining a pixel — reverted, device restored to 0153 (`d7e1e8d0…51203`).
+
+Full state of the scene draw is now: complete FBO 3, viewport 0,0,1280,720, colour mask 1111, blend/depth/stencil
+off, scissor 0,0,16384,16384, real vertices, real constants — and `max=0`.
+
+The remaining arithmetic candidate: `gl_Position.w = z'*c4[11] + y'*c4[7] + x'*c4[3] + c4[15]` needs those four
+elements to be `(0,0,0,1)`. Only the first five floats of `c4` were ever measured (`2/1280, -2/720, -1, -1, 1`).
+If `c4[3]` is `-1` the quad's `w` collapses to `1 - x'` and the whole primitive is clipped — the exact symptom.
+Next measurement: dump all 40 floats of binding 1 and compare against that requirement.

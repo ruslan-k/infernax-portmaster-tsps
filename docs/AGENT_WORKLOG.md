@@ -184,3 +184,14 @@ vs_c5_1 (384B): | 4000 0 0 0 | 0 4000 0 0 | 0 0 1 0 | 640 2000 -98 1 |
 - Next probe: read the actual VS for pair 2/0 (`infernax-shaders-draft.h`) and check how `vs_c4_1`/`vs_c5_1`/`vs_c3` combine, instead of inferring from the matrices.
 
 Probe of the client vertex buffer (`NVN_DRAW_VERTS`, glMapBufferRange) printed nothing — the draw does not come from a mapped GL buffer, so vertex positions must be read from guest memory at the attribute address instead.
+
+### 0121: where the shader text actually lives
+
+`glGetAttachedShaders(program)` returns nothing and `glGetShaderSource` prints 0 bytes — the game's
+programs are assembled from pre-compiled shader *objects* held by id: `glAttachShader(pr,(GLuint)p->sources[0])`
+(`nvn_render.h:1679`). So the GLSL text is not reachable through the linked program and must be read from
+the source table those ids index (`p->sources[]`), which is also what produces the `vs_c4_1` style names
+seen in `MOMO_UNIFORM_ENTRY`.
+
+Next: locate that table, read the VS for the pair used by the failing draw, and check how it combines
+`vs_c3` / `vs_c4_1` / `vs_c5_1` before changing anything about the constants.

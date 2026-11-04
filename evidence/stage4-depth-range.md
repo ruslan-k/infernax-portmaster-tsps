@@ -41,3 +41,15 @@ if(!depth_draw.active){GLfloat dr[2];glGetFloatv(GL_DEPTH_RANGE,dr);if(dr[0]==dr
 3. Кадр «не чёрный», но `nonblack=20480` из 921600 (полоса 1280×16) в большинстве кадров — картинка
    неполная.
 4. Внешняя съёмка: `kmsgrab` работает только когда порт жив; после падения на экране часы SpruceOS.
+
+## Correction (build 0055)
+
+`NX_PRESENT_CLEAR`, `NX_PROBE_QUAD`, `NX_PROBE_NO_DEPTH` проверялись через `getenv(...)`, то есть
+значение `"0"` из лаунчера считалось включённым флагом. Поэтому «нечёрный кадр» и магентовый PPM
+(`nvn-frame-ppm-*`, весь кадр FF00FF) были нашей собственной заливкой, а не картинкой игры.
+
+Введён `nvn_flag_on()` (пусто/0/false = выключено), флаги переведены на него.
+
+После исправления (build 0055, 278 кадров): `NVN_PRESENT_PIXELS nonblack=0 max=0 status=BLACK-SAMPLE`,
+`NVN_PRESENT_SOURCE max=0`, `NVN_DRAW_PIXELS max=0` на целях 0xc656990 / 0x3a5113af8 / 0x3a517bf98.
+Картинки пока нет; глубина-фикс остаётся в силе, но гостевые дровы дают чёрный.

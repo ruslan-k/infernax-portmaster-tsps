@@ -375,3 +375,16 @@ A 2D tile layer cannot do that by accident. It is the signature of a missing rot
 are laid out around the view at 45°, with each tile's edges landing on the view edges. Constant `c5` carries a
 pure scale+translation and the shader applies exactly one matrix, so the missing transform is not in the block we
 bind — the next check is the original shader's constant usage against the generated GLSL.
+
+## 0146: the generated VS is column-major-correct
+
+`gl_Position.x = _108*c4[8] + _94*c4[0] + _90*c4[4] + c4[12]`, `w = _108*c4[11] + _94*c4[3] + _90*c4[7] + c4[15]`,
+with `_90/_94/_108` built from `c5` rows — a standard column-major `P * (M * attr)`. No index bug in the generator.
+
+But with the `c5` block we actually measured (`4000 0 0 0 | 0 4000 0 0 | 0 0 1 0 | 640 2000 -98 1`, elements
+8..11 = `0 0 1 0`), the element the shader multiplies by `attr0.z` is `c5[8] = 0` and the translation lands in the
+`c5[12..15]` slot the shader uses as the *fourth* column — so the arithmetic and the block content disagree.
+Either the block we bind is not the one the shader indexes, or the constant texture is not what we uploaded.
+
+Next measurement: read the constant *texture* back at draw time (`glGetTexImage` on `vs_c5_1`) instead of the source
+buffer, and compare element 8 against the buffer.

@@ -430,3 +430,23 @@ The remaining arithmetic candidate: `gl_Position.w = z'*c4[11] + y'*c4[7] + x'*c
 elements to be `(0,0,0,1)`. Only the first five floats of `c4` were ever measured (`2/1280, -2/720, -1, -1, 1`).
 If `c4[3]` is `-1` the quad's `w` collapses to `1 - x'` and the whole primitive is clipped — the exact symptom.
 Next measurement: dump all 40 floats of binding 1 and compare against that requirement.
+
+## 0155–0156: the scene pass never rasterizes — proven, not inferred
+
+Added `MOMO_DIAG_FS=<index>|1`, which rewrites the fragment's final `}` to `frag_color0=vec4(1,0,0,1)` — it does not
+depend on the alpha-test tail that `MOMO_DIAG_RED`/`MOMO_DIAG_NOCLIP` require (no generated fragment contains
+`discard`, so those two hooks are inert in this port).
+
+Run with `MOMO_DIAG_FS=1`: `MOMO_DIAG_FS_INSTALLED` ×3, strip `max=255`, swapchain `max=255`, scene target
+
+```
+NVN_TARGET_END id=132 obj=0x3a5113af8 1280x720 max=0
+```
+
+So it is not "the shader computes black": with a forced red fragment the scene still writes nothing. The triangle
+never rasterizes. Combined with the earlier `NX_CBUF_IDENTITY` run (identity applied to `vs_c4 binding=1 n=65536`,
+still `max=0`), the transform is not the only blocker — the draw itself is being discarded.
+
+Next: inject a hardcoded full-screen quad into the vertex stage of this program (attribute-independent). Rasterizing
+proves FBO+draw path are fine and narrows it to attribute/transform semantics; still empty means the draw call is
+dropped before rasterization.

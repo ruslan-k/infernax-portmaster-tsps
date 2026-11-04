@@ -638,3 +638,36 @@ about the later frames. `cleanup-1.png` shows the Spruce menu (3106 distinct col
 or `/tmp/cmd_to_run.sh` remained. `exit=137` is our own SIGKILL, not a guest fault.
 
 Image goal still unmet. Next decision is a memory-guard/capture-window question, not a shader one.
+
+## 0165 device result: real panel picture, then the nvdec frontier
+
+Two harness-only runs (`run_controller165.py`, SHA-256
+`6947dead4e91a9ee46427e1ae82d43995d15be74fdf50bf06faec8d14c8922f9`) used the installed 0164 ELF
+`2f56db9d…24b8a`, the same env, the same RSS/MemAvailable floors and the same principal flow. The only
+change was the physical KMS capture trigger; the fixed 0/8/16 s schedule was removed.
+
+Run `arm-co-165-pixels-1793834300` fired the trigger on present frame 1. Every run of this title starts
+with a full-surface non-black initial buffer (`nonblack=921600 max=188`) that is not content, so both
+captures were black and this arm measured a trigger defect, not a renderer result. The guard also fired
+at 756052 KiB before index 17/18 appeared.
+
+Run `arm-co2-165-transition-1793834600` triggered on the first non-black present that follows a black one:
+
+- first content present at frame 222 (`nonblack=2208 max=32`), then 603 non-black presents over frames
+  222–828 with `texture-draws` rising 74 → 276;
+- no resource guard: RSS peak 753528 KiB against the 753664 KiB cap;
+- both exact receipts and `NVN_LC2_PROGRAM_REAL original-offline-pair=17/18 … program=6 code-control-source=byte-exact`;
+- two KMS captures taken while the owned process was alive, at the transition and 0.3 s later
+  (`pixels-0.png` `74c019961dc6272e7035da316f0ff5b781d368d6934b294709c3255ea693f1f8`,
+  `pixels-1.png` `cd8022756521dcb2c5da7d13734251898855f0036ad55b7d207d48328cf2830b`).
+  Both decode to 1280x720 with 149 / 214 distinct colours: black background, a grey/white logo band
+  spanning y=172..508 and a red element, with the brightness ramping 159 → 254 between the two frames.
+  The GL → EGL/KMS → panel path is therefore proven in a normal, non-TERM run for the first time.
+
+The title then stops itself at present frame 838:
+`STOP status=UNIMPLEMENTED_NV_DEVICE pc=sdk.text.seg+0x158b20 detail=0x5`, `exit=20`, immediately after
+`NV_OPEN path=/dev/nvhost-ctrl` and `NV_OPEN path=/dev/nvhost-nvdec` with `SVC id=0x21 handle=0x411`.
+The guest asks for the hardware video decoder. That is the new frontier; the picture itself is no longer
+the blocker. Cleanup verified: no target, wrapper or handoff, MainUI back, Spruce menu on the panel.
+
+Gameplay, input and audio remain unqualified. KMS captures stay local (owner content).

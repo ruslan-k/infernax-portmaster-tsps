@@ -319,3 +319,26 @@ bank array where the shader indexes a bank dynamically, and our fixed-offset bin
 
 Next measurement: disassemble program 2's vertex shader and check whether constant loads use an index register
 (LDC with a computed offset) rather than a fixed offset.
+
+## 0143: how the vertex shader actually reads its constants
+
+`out143/shaders/nvn_shader_sources.h`, the `vs_c4_1`/`vs_c5_1` block:
+
+```glsl
+uniform highp sampler2D vs_c5_1;
+...
+float _90 = fma(in_attr0.z, texelFetch(vs_c5_1, ivec2((9u >> 2) & 1023, 9u >> 12), 0)[9u & 3], ...);
+gl_Position.w = fma(_108, texelFetch(vs_c4_1, ivec2(11u >> 2, 0), 0)[3], ...);
+```
+
+Constants are **not** `uniform` blocks: every element is fetched from a constant *texture*, index → texel
+`(i/4, i/4096)`, component `i%4`. So `vs_c5_1` must contain the 96 elements of binding 2 as a 1024-wide texture,
+element `i` at texel `(i/4, 0)`, channel `i%4`.
+
+If that texture carries stale data or the wrong element order, `gl_Position.w` comes out 0 and every vertex is
+clipped — clean state, correct target, zero fragments, no GL error. That is exactly what 0136–0143 measured.
+Also note `NVN_UNIFORM_UPLOAD` never fired: the uniform upload code at `nvn_render.h:972` is not the path these
+draws use — the constant-texture path (line ~922, `NX_CBUF_TEXTURE`) is.
+
+Targets per frame, first visit: `133` 1024×32 (pair 14/1) paints to `max=253`; `130` 1280×720 (pair 2/0) stays
+`max=0` for the whole pass; swapchain `id=2/3/4` reaches `max=188` only later.

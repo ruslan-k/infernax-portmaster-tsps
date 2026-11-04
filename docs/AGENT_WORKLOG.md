@@ -602,3 +602,39 @@ Both Hades compilers produce identical GLSL
 Actual reflection carries two independent combined-at-GL operands: texture c2 0x168 / sampler c2 0x568,
 and texture c2 0x170 / sampler c2 0x570. The FS uses varying 1.xy for sampled RGB and varying 3.xy
 for sampled alpha, multiplied by varying 0; no guessed shared sampler. Native rendering code unchanged.
+
+## 0164 device result: pair 17/18 links, first non-black presented frames
+
+Build 0164 was installed atomically over out163 and read back as
+`2f56db9d5f5f95b2686253feed5b21e13c491686533e8229d42469386d924b8a` (1986560 bytes);
+the previous binary is retained as `infernax-nextos.bak-out163-before0164`
+(`9cf9540ffec61f3886fc1e89e232271cea81bbb2b07a16bc7e33287aa734f838`).
+Arm `arm-cn-164-fragment-1793834083` kept `NX_PROBE_FULL=0`, the 8 MiB runtime floor,
+RSS cap 736 MiB, MemAvailable floor 16 MiB, wall 300 s / game 240 s; no other variable changed.
+
+Both exact receipts appeared (`index=17` stage 0 `ec0f3d6f…ae4c`, `index=18` stage 1 `8572cb0a…a4ad`)
+and the pair materialized as GL program 6:
+`NVN_LC2_PROGRAM_REAL original-offline-pair=17/18 attributes=4 uniforms=3 program=6 code-control-source=byte-exact`.
+A catalogue lookup receipt is not a link receipt; this line is the link/pair receipt for the first time
+on this frontier.
+
+The present probe changed state for the first time in this port. Frames 1–238 read
+`status=BLACK-SAMPLE nonblack=0`; frame 239 is the first non-black sample (`nonblack=2208 max=32`),
+frame 240 reads `nonblack=44181 max=63`, and frames 252–337 are stable at
+`nonblack=5844 max=254 white=3209 texture-draws=113 status=PIXELS`. The draw probe (gated to the first
+draws) recorded draw #7 on `0x3a5115a58` as `max=253 px=0,132,131,255`.
+
+The guard fired first. At present frame 237 the sample read VmRSS 754092 KiB against the 736 MiB cap
+(753664 KiB) — 428 KiB over — with RssFile 509392, RssAnon 243412, RssShmem 1288, VmSwap 458736,
+MemAvailable 60728 KiB and SwapFree 1541944 KiB. The attribution reader completed in 157 ms.
+The controller then sent TERM (mono 39356.99) and SIGKILL (mono 39364.11), so every frame from 239 to 337
+was produced inside that 5 s window (~14 fps): the log cursor at guard time had only reached frame 237.
+The first non-black sequence is therefore real GL pixels of this title but **post-TERM**; an uninterrupted
+run has not yet shown content, and this arm does not prove the panel can show a picture.
+
+The three live KMS captures were taken on the fixed 0/8/16 s schedule from capture-ready, which landed at
+present frames ~1–30, i.e. before frame 239; all three decode to a single colour (black) and say nothing
+about the later frames. `cleanup-1.png` shows the Spruce menu (3106 distinct colours); no target, wrapper
+or `/tmp/cmd_to_run.sh` remained. `exit=137` is our own SIGKILL, not a guest fault.
+
+Image goal still unmet. Next decision is a memory-guard/capture-window question, not a shader one.

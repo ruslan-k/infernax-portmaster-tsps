@@ -671,3 +671,26 @@ The guest asks for the hardware video decoder. That is the new frontier; the pic
 the blocker. Cleanup verified: no target, wrapper or handoff, MainUI back, Spruce menu on the panel.
 
 Gameplay, input and audio remain unqualified. KMS captures stay local (owner content).
+
+## 0166: opt-in nvdec Open deny — the error reaches the guest, then a CPU fault
+
+Consultation `infernax-0166-nvdec-open-deny-6b95cb2` allowed exactly one diagnostic change: deny only
+`/dev/nvhost-nvdec`, only for the Open command, only when `NX_NVDEC_OPEN_DENY=1`, answering the IPC with
+result 0, `FdOut=0xffffffff` and `Err=0x30011` (`DeviceNotFound`), allocating no fd, default off.
+The hunk lives in `runtime/infernax-adapter.patch` (`native/nvdrv.h`, the `kind==5` branch); every other
+unknown path still stops.
+
+Build 0166: 0 errors, 4 existing warnings, 29/29 host tests, SHA-256
+`258a53591bdb77d7a41a92be2a7453fb4e4b8ee1282754a5aa5607fa383cbe86` (1990696 bytes), installed
+atomically over 0164 with backup `2f56db9d…24b8a` and independent read-back of the new hash.
+
+Arm `arm-cp-166-nvdecdeny-1793834900` kept every limit and env value and added only the one flag.
+The title rendered again (first content present at frame 229; KMS captures 1280x720 with 99 distinct
+colours, the same logo screen at an earlier fade step), the deny fired exactly once —
+`NV_OPEN_DENY path=/dev/nvhost-nvdec command=0 err=0x30011 fd=invalid optin=1` — and the guest then
+faulted: `STOP status=CPU_FAULT pc=0x7fb484e0d0 detail=0x5a42`, `exit=22`, present frame 844.
+
+By the consultation's own table this is "the error reached the guest, no progression". The fault PC lies
+outside the module segments printed in the same dump; the only adjacent guest state is `x13=0x5afe` and
+`x19/x1a = subsdk0.data.seg+0x3eb00/+0x3eb10`. Synthetic fds and ioctl stubs remain NO-GO, so the fault
+is not yet attributed and the next arm needs a fresh decision. Cleanup verified, MainUI back on the panel.

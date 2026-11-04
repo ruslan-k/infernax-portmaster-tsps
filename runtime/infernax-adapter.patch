@@ -1430,3 +1430,26 @@ index aa80bf7..d2c9873 100644
      }
      t->zero_mip_tail=1;
  }
+--- a/native/nvdrv.h
++++ b/native/nvdrv.h
+@@ -40,7 +40,19 @@
+         char path[129]={0};memcpy(path,(void *)(uintptr_t)req->inputs[0].address,req->inputs[0].size);
+         struct line line={0};text(&line,"NV_OPEN path=");text(&line,path);emit(&line);
+         unsigned kind=0;while(kind<5&&strcmp(path,nv_paths[kind]))kind++;
+-        if(kind==5)stop("UNIMPLEMENTED_NV_DEVICE",pc,kind,20);
++        if(kind==5) {
++            /* Diagnostic, default off: report the absent hardware video decoder to the guest instead of
++             * stopping the runtime. Opt-in by exact value only; every other unknown path still stops. */
++            const char *deny=getenv("NX_NVDEC_OPEN_DENY");
++            if(deny&&!strcmp(deny,"1")&&!strcmp(path,"/dev/nvhost-nvdec")) {
++                static int told;
++                if(!told) {struct line denyline={0};told=1;text(&denyline,"NV_OPEN_DENY path=");text(&denyline,path);
++                    text(&denyline," command=0 err=");hex(&denyline,0x30011U);text(&denyline," fd=invalid optin=1");emit(&denyline);}
++                uint32_t denied[2]={0xffffffffU,0x30011U};
++                ipc_reply(buffer,req->token,0,denied,8,0,req->domain);return 1;
++            }
++            stop("UNIMPLEMENTED_NV_DEVICE",pc,kind,20);
++        }
+         unsigned fd=0;while(fd<32&&nv_fds[fd].open)fd++;
+         if(fd==32)stop("NV_FD_TABLE_FULL",pc,fd,21);
+         nv_fds[fd].open=1;nv_fds[fd].kind=kind;nv_fds[fd].client=*state;

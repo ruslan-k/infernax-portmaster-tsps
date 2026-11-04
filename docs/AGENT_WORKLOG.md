@@ -210,3 +210,17 @@ Next: locate that table, read the VS for the pair used by the failing draw, and 
 - Vertex source next: `nvn_render_state.h` can point attribute 0 at a client array (`buffer=0`), which
   GLES 3 does not accept; `NVN_DRAW_SRC` prints the array-buffer binding, pointer and, for the client
   path, the first four positions read straight from that memory.
+
+## 0125–0127: the probe only ever looked at the centre 16×16
+
+`nvn_texture_probe_max` (`nvn_bridge.h:146`) reads a single 16×16 block at the centre of the target,
+so "max=0" never proved that a draw wrote nothing — only that the centre stayed untouched.
+
+Widening the trace (`NX_DRAW_TRACE=400`) over one frame shows 70 of 399 draws *do* write pixels:
+`number=1 target=0x3ba0073b8 max=253 px=0,132,128,255`, `number=6 target=0xc656990 max=188 px=0,0,188,255`,
+and the teal refresh repeats every 6 draws. The scene target `0x3a5113af8` (532 draws) stays at centre-zero.
+
+Next: dump whole targets to PPM (`NX_DUMP_FRAME`), because a centre probe cannot tell an empty scene from a
+scene whose content sits away from the middle. The first attempt wrote nothing — the frame gate uses
+`nvn_replay.last_frame`, which is the replay list's own counter and never reaches the requested frame in the
+live stream; the gate has to read the runtime's per-frame counter instead.

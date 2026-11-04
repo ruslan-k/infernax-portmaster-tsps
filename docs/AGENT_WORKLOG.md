@@ -251,3 +251,17 @@ The whole-surface dump attempted inside present returns `status=0x0`: at that po
 current (it is made current later in the dispatch), so every GL call there is a no-op. The dump must run
 after `nvn_single_make_current`/the async reader wait, or go through `nvn_private_dump("frame-ppm", ...)`
 which already runs with a live context.
+
+## 0133: whole-texture probe — the scene is empty, the swapchain is not
+
+`NX_PROBE_FULL=1` scans the entire target instead of a 16×16 centre block:
+
+- `0x3a517bf98` 1280×720 — `max=0 nonblack=0` over all 921 600 pixels: the scene target is genuinely empty.
+- `0xc656990` 1920×1080 — `max=188 nonblack=921600`: the swapchain is painted over exactly half its pixels
+  (0,0,188 blue), i.e. the composite writes, but only every other row / half the area.
+- `0x3a5113af8` 1024×32 — fully painted.
+
+Two separate faults, both now measured:
+1. nothing lands in the 1280×720 scene target (the transform/space problem);
+2. the swapchain is only half-covered, and the captured/presented image is black although the texture
+   holds blue — so the blit that produces the visible frame does not carry that content.

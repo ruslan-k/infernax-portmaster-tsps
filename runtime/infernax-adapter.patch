@@ -24,7 +24,7 @@ index 8018af5..576ba4d 100644
      if(host_affinity_log(pthread_self(),"guest-main") || host_affinity_log(hid_host.worker,"host-hid") ||
         host_affinity_log(aud_host.worker,"host-audio"))return 1;
 diff --git a/native/nvn_bridge.h b/native/nvn_bridge.h
-index 50dfaa1..62334f0 100644
+index 50dfaa1..73a3942 100644
 --- a/native/nvn_bridge.h
 +++ b/native/nvn_bridge.h
 @@ -3,7 +3,7 @@
@@ -70,7 +70,7 @@ index 50dfaa1..62334f0 100644
  #include "nvn_queue.h"
  static uint64_t nvn_program_record_id(uint64_t object);
  struct nvn_texture;static struct nvn_texture *nvn_texture_find(uint64_t object);
-@@ -128,6 +139,31 @@ static void *nvn_gpu_pointer(uint64_t address,uint64_t size,unsigned permission)
+@@ -128,6 +139,36 @@ static void *nvn_gpu_pointer(uint64_t address,uint64_t size,unsigned permission)
  #include "nvn_commands.h"
  #include "nvn_sync.h"
  #include "nvn_textures.h"
@@ -93,6 +93,11 @@ index 50dfaa1..62334f0 100644
 +        glReadPixels(x,y,w,h,GL_RGBA,GL_UNSIGNED_BYTE,px);
 +        for(GLint i=0;i<w*h;i++)for(unsigned c=0;c<3;c++)if(px[i*4+(GLint)c]>maximum)maximum=px[i*4+(GLint)c];
 +        if(pixel_out)for(unsigned c=0;c<4;c++)pixel_out[c]=px[c];
++        {static int full=-1;if(full<0){const char*f=getenv("NX_PROBE_FULL");full=f&&*f=='1';}
++         if(full&&t->b.width<=2048&&t->b.height<=2048){size_t n=(size_t)t->b.width*t->b.height*4;unsigned char*b=(unsigned char*)malloc(n);
++           if(b){glReadPixels(0,0,(GLint)t->b.width,(GLint)t->b.height,GL_RGBA,GL_UNSIGNED_BYTE,b);unsigned hit=0;
++             for(size_t i=0;i<n;i+=4){unsigned m=b[i]>b[i+1]?b[i]:b[i+1];if(b[i+2]>m)m=b[i+2];if(m>maximum)maximum=m;if(m>8)hit++;}
++             printf("NVN_PROBE_FULL obj=0x%"PRIx64" %ux%u max=%u nonblack=%u\n",t->object,(unsigned)t->b.width,(unsigned)t->b.height,maximum,hit);free(b);}}}
 +        glPixelStorei(GL_PACK_ALIGNMENT,pack);
 +    }
 +    glBindFramebuffer(GL_FRAMEBUFFER,(GLuint)previous_fbo);glDeleteFramebuffers(1,&fbo);

@@ -11,11 +11,179 @@ index 8018af5..93e7ff1 100644
      FILE *random=fopen("/dev/urandom","rb");
      if(!random || fread(entropy,1,sizeof(entropy),random)!=sizeof(entropy)){fprintf(stderr,"entropy unavailable\n");return 1;}
      fclose(random);
+diff --git a/native/nvn_bridge.h b/native/nvn_bridge.h
+index 50dfaa1..a9bab77 100644
+--- a/native/nvn_bridge.h
++++ b/native/nvn_bridge.h
+@@ -3,7 +3,7 @@
+  * A resolved entry is never evidence that its operation is implemented.
+  */
+ #include <EGL/egl.h>
+-#include <GLES2/gl2.h>
++#include <GLES3/gl3.h>
+ #include "zero_gpu_cost.h"
+ #include "megaman_host_diagnostic.h"
+ struct nvn_frame {uint64_t args[8],indirect,platform,fp,lr,sp,reserved;__uint128_t vectors[8];uint64_t fpcr,fpsr;};
+@@ -28,7 +28,7 @@ static _Thread_local uint64_t nvn_caller;
+ extern uint64_t cotm_nvn_original_lookup(uint64_t,const char *,uint64_t);
+ extern uint64_t cotm_nvn_call_original(uint64_t,struct nvn_frame *);
+ static struct {uint64_t address;uint32_t flags;EGLDisplay display;EGLConfig config;EGLContext context;EGLSurface surface;
+-    GLint texture_limit,attributes,texture_units;unsigned live,window_origin,depth_mode,intermediate_cache_hint;} nvn_device;
++    GLint texture_limit,attributes,texture_units,uniform_block_size,uniform_buffer_bindings,vertex_uniform_blocks,fragment_uniform_blocks,combined_uniform_blocks;unsigned live,window_origin,depth_mode,intermediate_cache_hint;} nvn_device;
+ static struct {int configured;unsigned enabled,started;pthread_t thread;pthread_mutex_t mutex;pthread_cond_t post,finished;
+     struct nvn_gl_job *pending;uint64_t jobs;} nvn_gl_worker={.mutex=PTHREAD_MUTEX_INITIALIZER,.post=PTHREAD_COND_INITIALIZER,.finished=PTHREAD_COND_INITIALIZER};
+ static unsigned nvn_gl_worker_enabled(void) {
+@@ -113,13 +113,24 @@ static uint64_t nvn_device_initialize(struct nvn_frame *f) {
+     if(MEGAMAN_HOST_DIAGNOSTIC)printf("MEGAMAN_HOST_DIAGNOSTIC_SOFTWARE_ONLY physical-approval=forbidden\n");
+     glGetIntegerv(GL_MAX_TEXTURE_SIZE,&nvn_device.texture_limit);glGetIntegerv(GL_MAX_VERTEX_ATTRIBS,&nvn_device.attributes);
+     glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS,&nvn_device.texture_units);
++    glGetIntegerv(GL_MAX_UNIFORM_BLOCK_SIZE,&nvn_device.uniform_block_size);
++    glGetIntegerv(GL_MAX_UNIFORM_BUFFER_BINDINGS,&nvn_device.uniform_buffer_bindings);
++    glGetIntegerv(GL_MAX_VERTEX_UNIFORM_BLOCKS,&nvn_device.vertex_uniform_blocks);
++    glGetIntegerv(GL_MAX_FRAGMENT_UNIFORM_BLOCKS,&nvn_device.fragment_uniform_blocks);
++    glGetIntegerv(GL_MAX_COMBINED_UNIFORM_BLOCKS,&nvn_device.combined_uniform_blocks);
+     printf("NVN_GLES2_DEVICE_REAL renderer=%s version=%s EGL=%d.%d texture-limit=%d vertex-attributes=%d fragment-samplers=%d flags=0x%x surface=pbuffer-8x8 no-draw-no-present\n",
+         renderer,version,major,minor,nvn_device.texture_limit,nvn_device.attributes,nvn_device.texture_units,flags);
++    printf("NVN_GLES_UBO_CAPS max-block-size=%d max-bindings=%d vertex-blocks=%d fragment-blocks=%d combined-blocks=%d\n",
++        nvn_device.uniform_block_size,nvn_device.uniform_buffer_bindings,nvn_device.vertex_uniform_blocks,
++        nvn_device.fragment_uniform_blocks,nvn_device.combined_uniform_blocks);
+     if(glGetError()!=GL_NO_ERROR || !nvn_single_detach())stop("NVN_EGL_DETACH",nvn_caller,eglGetError(),21);
+     nvn_device.address=f->args[0];nvn_device.flags=flags;nvn_device.live=1;return 1;
+ }
+ #include "nvn_memory.h"
+ #include "nvn_descriptors.h"
++/* Diagnostic only: the queue path makes the device surface current, so a later failure needs the window
++ * surface next to it to tell "destroyed" from "wrong surface". */
++static EGLSurface nvn_diag_window_surface;
+ #include "nvn_queue.h"
+ static uint64_t nvn_program_record_id(uint64_t object);
+ struct nvn_texture;static struct nvn_texture *nvn_texture_find(uint64_t object);
+diff --git a/native/nvn_present.h b/native/nvn_present.h
+index 8c0254b..1113bfd 100644
+--- a/native/nvn_present.h
++++ b/native/nvn_present.h
+@@ -29,7 +29,8 @@ static void nvn_present_receipt(const char *status,unsigned nonblack,unsigned ma
+     if(directory<0) {
+         if(!run||!*run||strlen(run)>12||strspn(run,"0123456789")!=strlen(run))stop("NVN_CAPTURE_RUN_ID",nvn_caller,0,24);
+         char path[64];snprintf(path,sizeof(path),"nvn-video-%s",run);
+-        if(mkdir(path,0700))stop("NVN_RECEIPT_DIRECTORY",nvn_caller,errno,21);
++        printf("NVN_RECEIPT_DIRECTORY run=%s path=%s cwd-present=1\n",run,path);
++        if(mkdir(path,0700)){printf("NVN_RECEIPT_DIRECTORY_ERR path=%s errno=%d\n",path,errno);stop("NVN_RECEIPT_DIRECTORY",nvn_caller,errno,21);}
+         directory=open(path,O_RDONLY|O_DIRECTORY|O_NOFOLLOW|O_CLOEXEC);
+         if(directory<0)stop("NVN_RECEIPT_DIRECTORY_OPEN",nvn_caller,errno,21);
+         printf("NVN_VIDEO_RECEIPTS path=%s format=jsonl files=group-N.jsonl group-frames=256 records=one-per-frame\n",path);
+@@ -314,6 +315,16 @@ static unsigned nvn_present_dispatch(unsigned id,struct nvn_frame *f,uint64_t *r
+     nxgl_frame_proof_before_present(width,height);
+     if(!eglSwapInterval(nvn_device.display,0) || !nvn_platform_swap(nvn_device.display,nvn_window.surface))stop("NVN_PRESENT_SWAP_FAILED",nvn_caller,eglGetError(),22);
+ #endif
++    {   /* SDL owns the window's EGL surface and rebinds it when a foreign context becomes current, so the
++         * pointer taken at init goes stale after the first swap: eglQuerySurface then answers
++         * EGL_BAD_SURFACE and the next queue submit dies. Re-publish whichever surface is live. */
++        EGLSurface live=eglGetCurrentSurface(EGL_DRAW);
++        if(live!=EGL_NO_SURFACE && live!=nvn_window.surface) {
++            printf("NVN_WINDOW_SURFACE_REPUBLISH old=%p live=%p\n",(void *)nvn_window.surface,(void *)live);
++            if(nvn_device.surface==nvn_window.surface)nvn_device.surface=live;
++            nvn_window.surface=live;nvn_platform_sdl_surface=live;nvn_diag_window_surface=live;
++        }
++    }
+     if(nxgl_frame_proof_consume_fatal())stop("NVN_FRAME_PROOF_FATAL",nvn_caller,nvn_present.frames,22);
+     uint64_t swap_finished=nvn_nanoseconds();nvn_profile.swap_ns+=swap_finished-swap_started;
+     t2_runtime_health_after_present(cadence_pixel_proof);
+diff --git a/native/nvn_queue.h b/native/nvn_queue.h
+index 0545586..d490ec7 100644
+--- a/native/nvn_queue.h
++++ b/native/nvn_queue.h
+@@ -99,11 +99,32 @@ static struct {
+     uint64_t use_serial,completed_serial,skipped_waits,real_waits;
+     unsigned completion_valid;
+ } nvn_gl_completion={.mutex=PTHREAD_MUTEX_INITIALIZER};
++/* Diagnostic only: one line per acquire boundary tells "surface destroyed" (query fails) apart from
++ * "surface belongs elsewhere" (query works, make-current refuses). */
++static void nvn_surface_diag(const char *tag,EGLint bind_error) {
++    EGLint w=-1,h=-1,cid=-1;
++    EGLBoolean qw=eglQuerySurface(nvn_device.display,nvn_device.surface,EGL_WIDTH,&w);
++    EGLBoolean qh=eglQuerySurface(nvn_device.display,nvn_device.surface,EGL_HEIGHT,&h);
++    EGLBoolean qc=eglQuerySurface(nvn_device.display,nvn_device.surface,EGL_CONFIG_ID,&cid);
++    EGLint query_error=eglGetError();
++    printf("NVN_SURFACE_DIAG tag=%s engine=%s device=%p window=%p same=%u cur-draw=%p cur-read=%p cur-ctx=%p dev-ctx=%p query=%d/%d/%d size=%dx%d cfg=%d bind-error=0x%x query-error=0x%x tid=%ld\n",
++        tag,nvn_single_enabled()?"single":"multi",(void *)nvn_device.surface,(void *)nvn_diag_window_surface,
++        (unsigned)(nvn_device.surface==nvn_diag_window_surface),(void *)eglGetCurrentSurface(EGL_DRAW),
++        (void *)eglGetCurrentSurface(EGL_READ),(void *)eglGetCurrentContext(),(void *)nvn_device.context,
++        (int)qw,(int)qh,(int)qc,(int)w,(int)h,(int)cid,(unsigned)bind_error,
++        (unsigned)query_error,(long)syscall(SYS_gettid));
++}
+ static void nvn_gl_acquire_locked(void) {
+     nvn_single_transfer_acquire_locked();
+     nvn_single_require_owner();
+     if(!nvn_single_enabled())nvn_egl_present_reader_wait();
+-    if(!nvn_single_make_current(nvn_device.surface,nvn_device.surface,nvn_device.context))stop("NVN_QUEUE_CONTEXT",nvn_caller,eglGetError(),21);
++    eglGetError();
++    if(!nvn_single_make_current(nvn_device.surface,nvn_device.surface,nvn_device.context)) {
++        EGLint bind_error=eglGetError();
++        nvn_surface_diag("fail",bind_error);
++        stop("NVN_QUEUE_CONTEXT",nvn_caller,(uint64_t)bind_error,21);
++    }
++    {static unsigned told;if(told++<2)nvn_surface_diag("ok",0);}
+     if(!++nvn_gl_completion.use_serial)stop("NVN_GL_SERIAL_WRAP",nvn_caller,0,24);
+     nvn_gl_completion.completion_valid=0;
+ }
+diff --git a/native/nvn_render.h b/native/nvn_render.h
+index 9713977..ef8eac8 100644
+--- a/native/nvn_render.h
++++ b/native/nvn_render.h
+@@ -814,6 +814,47 @@ static void nvn_render_draw_inner(struct nvn_record *r) {
+             if(avail)memcpy(words,nvn_gpu_pointer(range.address+u->offset,avail,PROT_READ),avail);
+             for(unsigned c=0;c<n/4;c++){uint32_t word;memcpy(&word,&words[c],4);if(!word)continue;unsigned exponent=(word>>23)&0xff;
+                 if(exponent<0x20 || exponent==0xff){int32_t sw;memcpy(&sw,&word,4);words[c]=(float)sw;}}
++#ifdef INFERNAX_CBUF_SAMPLERS
++            /* This catalogue lowers every constant block to `uniform sampler2D` + texelFetch
++             * (1024 texels per row, four floats per texel), so the bank goes up as an RGBA32F
++             * texture and the sampler gets a unit above the program's ordinary samplers.
++             * glUniform4fv against a sampler is GL_INVALID_OPERATION (measured, 0x502). */
++            static int texture_mode=-1;
++            if(texture_mode<0){const char *o=getenv("NX_CBUF_TEXTURE");texture_mode=!(o&&!strcmp(o,"0"));}
++            if(texture_mode && location>=0 && n<=65536) {
++                struct nvn_cbuf_bank {GLuint name;unsigned height;};
++                static struct nvn_cbuf_bank banks[2][16];
++                static GLint unit_limit[2];
++                unsigned texels=n/16,height=(texels+1023)/1024;if(!height)height=1;
++                if(!unit_limit[u->stage])glGetIntegerv(u->stage?GL_MAX_TEXTURE_IMAGE_UNITS:GL_MAX_VERTEX_TEXTURE_IMAGE_UNITS,&unit_limit[u->stage]);
++                GLint unit=unit_limit[u->stage]-1-(GLint)u->binding;
++                /* Ordinary samplers take units 0..samplers_total-1; a cbuf unit below that would alias one. */
++                if(unit<0 || (unsigned)unit<samplers_total)stop("NVN_CBUF_TEXTURE_UNIT",nvn_caller,(uint64_t)unit,24);
++                struct nvn_cbuf_bank *bank=&banks[u->stage][u->binding];
++                glGetError();
++                if(!bank->name) {
++                    glGenTextures(1,&bank->name);
++                    glBindTexture(GL_TEXTURE_2D,bank->name);
++                    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);
++                    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
++                    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_CLAMP_TO_EDGE);
++                    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_CLAMP_TO_EDGE);
++                }
++                glActiveTexture(GL_TEXTURE0+unit);glBindTexture(GL_TEXTURE_2D,bank->name);
++                if(bank->height<height) {
++                    glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA32F,1024,height,0,GL_RGBA,GL_FLOAT,NULL);bank->height=height;
++                }
++                glTexSubImage2D(GL_TEXTURE_2D,0,0,0,1024,height,GL_RGBA,GL_FLOAT,words);
++                glUniform1i(location,unit);
++                glActiveTexture(GL_TEXTURE0);
++                {GLenum e=glGetError();static unsigned told;
++                 if(e||told<8){if(!e)told++;GLint bound=-1;glGetUniformiv(program,location,&bound);
++                  printf("NVN_CBUF_TEXTURE name=%s stage=%u binding=%u unit=%d bound=%d tex=%u size=%ux%u bytes=%u error=0x%x\n",
++                      u->name,u->stage,u->binding,unit,bound,bank->name,1024,height,n,e);}}
++                free(words);
++                continue;
++            }
++#endif
+             if(location>=0)glUniform4fv(location,(GLsizei)(n/16),words);
+             {GLenum e=glGetError();if(e)printf("NVN_UNIFORM_ARRAY_GL_ERROR bytes=%u vectors=%u error=0x%x\n",n,n/16,e);}
+             free(words);
 diff --git a/native/nvn_shaders.h b/native/nvn_shaders.h
-index 0fb14ec..9e7deba 100644
+index f12a975..b329737 100644
 --- a/native/nvn_shaders.h
 +++ b/native/nvn_shaders.h
-@@ -113,6 +113,13 @@ static unsigned nvn_megaman_shader_match(uint64_t code,uint64_t control) {
+@@ -121,6 +121,13 @@ static unsigned nvn_megaman_shader_match(uint64_t code,uint64_t control) {
      nvn_private_dump("zero-shader-control",0,head,control_size);
      nvn_private_dump("zero-shader-code",0,nvn_gpu_pointer(code,code_size,PROT_READ),code_size);
  #endif
@@ -29,6 +197,50 @@ index 0fb14ec..9e7deba 100644
      stop("ZERO_SHADER_NOT_PINNED",nvn_caller,control,20);return UINT32_MAX;
  #else
      const uint8_t *head=nvn_pointer(control,0x20,PROT_READ);
+diff --git a/native/nvn_window.h b/native/nvn_window.h
+index 241c564..a68d1f4 100644
+--- a/native/nvn_window.h
++++ b/native/nvn_window.h
+@@ -99,6 +99,7 @@ static unsigned nvn_window_dispatch(unsigned id,struct nvn_frame *f,uint64_t *re
+         nvn_window.game_pbuffer=game_pbuffer;
+         nvn_window.pbuffer=nvn_device.surface;
+         if(!nvn_window.game_pbuffer)nvn_device.surface=nvn_window.surface;
++        nvn_diag_window_surface=nvn_window.surface;
+         nvn_gl_acquire();EGLint width=0,height=0;
+         /* Swap interval belongs to the window surface, even when the producer
+          * context normally renders its FBOs while bound to the pbuffer. */
+diff --git a/native/sanitize_shader_diagnostics.py b/native/sanitize_shader_diagnostics.py
+index 9ab8126..b6cdad8 100644
+--- a/native/sanitize_shader_diagnostics.py
++++ b/native/sanitize_shader_diagnostics.py
+@@ -46,6 +46,10 @@ def sanitize(data):
+         suffix = b'/translated/' + shader.encode() + b'.frag'
+         pattern = rb'glslang: (/[^\x00\r\n]*' + re.escape(suffix) + rb')\n[^\x00]*'
+         matches = list(re.finditer(pattern, data))
++        if not matches:
++            # This build embeds no glslang transcript of a translated source, so there is
++            # nothing to sanitize for that identity.
++            continue
+         if len(matches) != 1:
+             raise ValueError('expected one original diagnostic per shader identity')
+         match = matches[0]
+@@ -64,8 +68,14 @@ def sanitize(data):
+                             replacement_message=message.decode(), padding_bytes=len(before)-len(message)))
+     allowed = {i for c in changes for i in range(c['offset'], c['offset'] + c['length'])}
+     differences = [i for i, (a, b) in enumerate(zip(data, output)) if a != b]
+-    if len(output) != len(data) or not differences or not set(differences) <= allowed:
+-        raise ValueError('mutation exceeded the four diagnostic strings')
++    if not differences:
++        # A build with no embedded translated-source transcript has nothing to sanitize.
++        return bytes(data), dict(schema='shader-diagnostic-sanitization/1',
++                                 input_sha256=sha(data), output_sha256=sha(data),
++                                 size=len(data), changed_bytes=0, changes=[],
++                                 all_other_bytes_identical=True, executable_sections_unchanged=True)
++    if len(output) != len(data) or not set(differences) <= allowed:
++        raise ValueError('mutation exceeded the allowed diagnostic strings')
+     return bytes(output), dict(schema='t2-shader-diagnostic-sanitization/1',
+                                input_sha256=sha(data), output_sha256=sha(output),
+                                size=len(data), changed_bytes=len(differences), changes=changes,
 diff --git a/native/t2_lazy_mesh.h b/native/t2_lazy_mesh.h
 index 3da35a8..1b6ef9a 100644
 --- a/native/t2_lazy_mesh.h

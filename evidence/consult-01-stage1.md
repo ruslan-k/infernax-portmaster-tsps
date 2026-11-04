@@ -1,0 +1,11 @@
+# Stage-1 ChatGPT consultation — 2026-11-04
+
+- Channel: `chatgpt-use` browser session `chatgpt-web`; request `infernax-stage1-debug-20261104-1`.
+- The request was submitted, pinned to conversation `6aeaf314-7a6c-83ed-9e5e-3967c55c811c`, and completed successfully. Full response: local scratch file `/var/home/ruslan/.hermes/cache/scratch/infernax-chatgpt-stage1.out` (19,224 bytes); CLI progress/stderr: `infernax-chatgpt-stage1.err`.
+- ChatGPT independently checked the public repo history. Public HEAD `48a863d` contains only initial bring-up, pycache cleanup, and early shader dump/launcher work; it does not include the supplied local cbuf lowering, receipt handling, or shader catalogue. The running build therefore reflects uncommitted local changes, not public main.
+- Its central confirmed mismatch: generated ESSL declares `sampler2D` cbufs and reads them with `texelFetch`, while runtime `kind==7` still calls `glUniform4fv`. That call is incompatible with a sampler uniform; `0x502` alone does not prove uniform-vector capacity was the only cause.
+- Ranked hypotheses: (1) reused run ID / receipt path caused EEXIST, likely but effective run ID was not logged; (2) sampler2D-vs-glUniform4fv mismatch is a concrete upload defect; (3) inferred cbuf binding indices may not match NVN API slots; (4) texture-unit collisions and independent framebuffer/scanout issues remain possible.
+- Recommended sequence: first run with a verified-unused numeric `COTM_RUN_ID`, logging the effective ID/path and preserving `nvn-video-1`; next add bounded logs for actual NVN buffer binds and draw-time mapping; only after slot provenance, test a reversible RGBA32F sampler2D upload in a new build. Do not delete receipts, accept EEXIST blindly, or claim a picture without in-run KMS capture.
+- UBO remains an alternative only if shader declarations are also rewritten and the linked std140 block size/binding/ranges are verified. ChatGPT notes `float[16384]` std140 would exceed the 65536-byte cap, while `vec4[4096]` fits exactly.
+
+No code, device, receipt, or repository-ref changes were made during the consultation.

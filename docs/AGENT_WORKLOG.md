@@ -265,3 +265,16 @@ Two separate faults, both now measured:
 1. nothing lands in the 1280×720 scene target (the transform/space problem);
 2. the swapchain is only half-covered, and the captured/presented image is black although the texture
    holds blue — so the blit that produces the visible frame does not carry that content.
+
+## 0134–0135: the only painted thing is a clear rectangle in the corner
+
+`NX_PROBE_DUMP=1` writes whole targets to PPM:
+
+- `0x3a518c228` 1280×720 — completely black (scene target, confirms 0133).
+- `0x3a5115a58`/`0x3a5113af8` 1024×32 — a horizontal teal gradient, the port's own fullscreen quad.
+- `0xc656990` 1920×1080 — one flat `0,0,188` rectangle covering **x 0…1280, y 360…1080**
+  (exactly 1280×720, anchored bottom-left of a 1920×1080 surface). Nothing else is touched.
+
+So the swapchain is not "half painted": it carries a single 1280×720 clear/quad in the corner of a
+1920×1080 image. The guest's viewport is 1280×720 while the presented surface is 1920×1080 — a real
+size mismatch — and the game's own scene drawing still produces nothing inside that region.

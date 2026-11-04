@@ -24,7 +24,7 @@ index 8018af5..576ba4d 100644
      if(host_affinity_log(pthread_self(),"guest-main") || host_affinity_log(hid_host.worker,"host-hid") ||
         host_affinity_log(aud_host.worker,"host-audio"))return 1;
 diff --git a/native/nvn_bridge.h b/native/nvn_bridge.h
-index 50dfaa1..73a3942 100644
+index 50dfaa1..9d3982c 100644
 --- a/native/nvn_bridge.h
 +++ b/native/nvn_bridge.h
 @@ -3,7 +3,7 @@
@@ -70,7 +70,7 @@ index 50dfaa1..73a3942 100644
  #include "nvn_queue.h"
  static uint64_t nvn_program_record_id(uint64_t object);
  struct nvn_texture;static struct nvn_texture *nvn_texture_find(uint64_t object);
-@@ -128,6 +139,36 @@ static void *nvn_gpu_pointer(uint64_t address,uint64_t size,unsigned permission)
+@@ -128,6 +139,42 @@ static void *nvn_gpu_pointer(uint64_t address,uint64_t size,unsigned permission)
  #include "nvn_commands.h"
  #include "nvn_sync.h"
  #include "nvn_textures.h"
@@ -97,7 +97,13 @@ index 50dfaa1..73a3942 100644
 +         if(full&&t->b.width<=2048&&t->b.height<=2048){size_t n=(size_t)t->b.width*t->b.height*4;unsigned char*b=(unsigned char*)malloc(n);
 +           if(b){glReadPixels(0,0,(GLint)t->b.width,(GLint)t->b.height,GL_RGBA,GL_UNSIGNED_BYTE,b);unsigned hit=0;
 +             for(size_t i=0;i<n;i+=4){unsigned m=b[i]>b[i+1]?b[i]:b[i+1];if(b[i+2]>m)m=b[i+2];if(m>maximum)maximum=m;if(m>8)hit++;}
-+             printf("NVN_PROBE_FULL obj=0x%"PRIx64" %ux%u max=%u nonblack=%u\n",t->object,(unsigned)t->b.width,(unsigned)t->b.height,maximum,hit);free(b);}}}
++             printf("NVN_PROBE_FULL obj=0x%"PRIx64" %ux%u max=%u nonblack=%u\n",t->object,(unsigned)t->b.width,(unsigned)t->b.height,maximum,hit);
++             {static int dumped;const char *pd=getenv("NX_PROBE_DUMP");if(pd&&*pd=='1'&&dumped<10){char path[192];
++               snprintf(path,sizeof path,"/mnt/SDCARD/Roms/PORTS/infernax/probe-%016"PRIx64".ppm",t->object);
++               FILE *fp=fopen(path,"wb");if(fp){fprintf(fp,"P6\n%u %u\n255\n",(unsigned)t->b.width,(unsigned)t->b.height);
++                 for(int yy=(int)t->b.height-1;yy>=0;yy--)for(unsigned xx=0;xx<t->b.width;xx++)fwrite(b+((size_t)yy*t->b.width+xx)*4,1,3,fp);
++                 fclose(fp);printf("NVN_PROBE_DUMP obj=0x%"PRIx64" wrote=1\n",t->object);dumped++;}}}
++             free(b);}}}
 +        glPixelStorei(GL_PACK_ALIGNMENT,pack);
 +    }
 +    glBindFramebuffer(GL_FRAMEBUFFER,(GLuint)previous_fbo);glDeleteFramebuffers(1,&fbo);

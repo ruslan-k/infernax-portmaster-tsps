@@ -300,3 +300,22 @@ So the draws form a tile grid: individual tiles sit outside the view, but *some*
 land inside. That contradicts the fully black 1280×720 target from 0133/0135 and points at the target the dump
 names (`id=132`) not being the texture the whole-surface probe read (`0x3a518c228`). That identity is the next
 thing to pin down, before touching any transform.
+
+## 0138: target identity is not the problem
+
+```
+NVN_DRAW_STATE target_id=132 target_obj=0x3a5115a58 1024x32 depth=0x0        (strip)
+NVN_DRAW_STATE target_id=130 target_obj=0x3a517bf98 1280x720 depth=0x3a5129b58 (scene)
+NVN_DRAW_STATE target_id=2   target_obj=0xc656990   1920x1080 depth=0x3a0fbe4c8 (present)
+```
+
+The scene draws do land in `0x3a517bf98` — exactly the texture whose whole-surface probe was `max=0 nonblack=0`.
+So the probe and the draw agree; the target was never mismatched.
+
+With state clean (0136) and the target correct, the remaining way to get zero fragments from a quad that is
+partly on screen is a degenerate clip-space result, e.g. `w=0`. Notably binding 2 is **384 bytes with only the
+first 128 non-zero** (`4000…`, `640 2000 -98 1`), the other 256 bytes are zeros — consistent with a constant
+bank array where the shader indexes a bank dynamically, and our fixed-offset binding leaves it reading zeros.
+
+Next measurement: disassemble program 2's vertex shader and check whether constant loads use an index register
+(LDC with a computed offset) rather than a fixed offset.

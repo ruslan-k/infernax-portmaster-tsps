@@ -53,3 +53,20 @@ if(!depth_draw.active){GLfloat dr[2];glGetFloatv(GL_DEPTH_RANGE,dr);if(dr[0]==dr
 После исправления (build 0055, 278 кадров): `NVN_PRESENT_PIXELS nonblack=0 max=0 status=BLACK-SAMPLE`,
 `NVN_PRESENT_SOURCE max=0`, `NVN_DRAW_PIXELS max=0` на целях 0xc656990 / 0x3a5113af8 / 0x3a517bf98.
 Картинки пока нет; глубина-фикс остаётся в силе, но гостевые дровы дают чёрный.
+
+## Stage 5 (builds 0056–0059): гостевые дровы не доходят до растеризации
+
+- `NVN_DRAW_OCCL` (`GL_ANY_SAMPLES_PASSED` вокруг каждого гостевого дрова, первые 8): `samples=0` во всех.
+  Значит фрагменты не появляются вовсе — дело не в цвете/записи, а в геометрии.
+- `draw-buffer0=0x8ce0` (COLOR_ATTACHMENT0) — вывод не отключён.
+- `NVN_DRAW_STATE2`: `cull=0 scissor=0 box=0,0,16384,16384 blend=0 depthtest=0` — состояние уже чистое.
+- `NX_FORCE_STATE=1` (принудительно cull/scissor/stencil/blend/depth off, colormask on, viewport 0,0,1280,720): `samples` всё равно 0.
+- `NX_NO_DEPTH_TEST=1`: без изменений.
+- Найдена и исправлена реальная ошибка: cbuf-семплеры в **вершинной** стадии получали unit 127
+  (`GL_MAX_VERTEX_TEXTURE_IMAGE_UNITS` на Mali отдаёт 128, реально вершинных юнитов 32).
+  Теперь вершинные cbuf — unit 31/30 (`unit = min(limit,32)-1-binding`). На `samples` это не повлияло.
+- Гость чистит цель в чёрный (`MOMO_CLEAR_COLOR target=130 rgba=0,0,0,0`) и рисует 6 дровов на кадр.
+- Итог: программы/состояние валидны, но вершины после VS вырождены или вне clip-space.
+
+Следующий прибор: transform feedback вокруг одного гостевого дрова — прочитать фактические `gl_Position`
+6 вершин и сравнить с ожидаемым clip-space.

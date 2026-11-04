@@ -12,7 +12,7 @@ index 8018af5..93e7ff1 100644
      if(!random || fread(entropy,1,sizeof(entropy),random)!=sizeof(entropy)){fprintf(stderr,"entropy unavailable\n");return 1;}
      fclose(random);
 diff --git a/native/nvn_bridge.h b/native/nvn_bridge.h
-index 50dfaa1..a9bab77 100644
+index 50dfaa1..09e2541 100644
 --- a/native/nvn_bridge.h
 +++ b/native/nvn_bridge.h
 @@ -3,7 +3,7 @@
@@ -58,8 +58,38 @@ index 50dfaa1..a9bab77 100644
  #include "nvn_queue.h"
  static uint64_t nvn_program_record_id(uint64_t object);
  struct nvn_texture;static struct nvn_texture *nvn_texture_find(uint64_t object);
+@@ -128,6 +139,29 @@ static void *nvn_gpu_pointer(uint64_t address,uint64_t size,unsigned permission)
+ #include "nvn_commands.h"
+ #include "nvn_sync.h"
+ #include "nvn_textures.h"
++/* Diagnostic only: highest channel value in a 16x16 block at the texture centre. Tells "the guest wrote
++ * visible pixels" apart from "the quad sampled nothing" without a full readback. */
++static unsigned nvn_texture_probe_max(struct nvn_texture *t,unsigned *complete_out,unsigned char *pixel_out) {
++    GLint previous_fbo;GLuint fbo=0;unsigned maximum=0;EGLint complete=0;
++    if(!t||!t->name){if(complete_out)*complete_out=0;return 0;}
++    glGetIntegerv(GL_FRAMEBUFFER_BINDING,&previous_fbo);
++    glGenFramebuffers(1,&fbo);glBindFramebuffer(GL_FRAMEBUFFER,fbo);
++    glFinish();
++    glFramebufferTexture2D(GL_FRAMEBUFFER,GL_COLOR_ATTACHMENT0,GL_TEXTURE_2D,t->name,0);
++    GLenum status=glCheckFramebufferStatus(GL_FRAMEBUFFER);complete=(EGLint)status;
++    if(status==GL_FRAMEBUFFER_COMPLETE) {
++        unsigned char px[16*16*4];GLint pack;glGetIntegerv(GL_PACK_ALIGNMENT,&pack);glPixelStorei(GL_PACK_ALIGNMENT,1);
++        GLint x=(GLint)((t->b.width>16?(t->b.width/2)&~15u:0)),y=(GLint)((t->b.height>16?(t->b.height/2)&~15u:0));
++        GLint w=(GLint)(t->b.width>16?16:t->b.width),h=(GLint)(t->b.height>16?16:t->b.height);
++        glReadPixels(x,y,w,h,GL_RGBA,GL_UNSIGNED_BYTE,px);
++        for(GLint i=0;i<w*h;i++)for(unsigned c=0;c<3;c++)if(px[i*4+(GLint)c]>maximum)maximum=px[i*4+(GLint)c];
++        if(pixel_out)for(unsigned c=0;c<4;c++)pixel_out[c]=px[c];
++        glPixelStorei(GL_PACK_ALIGNMENT,pack);
++    }
++    glBindFramebuffer(GL_FRAMEBUFFER,(GLuint)previous_fbo);glDeleteFramebuffers(1,&fbo);
++    if(complete_out)*complete_out=complete;
++    return maximum;
++}
+ #include "nvn_samplers.h"
+ #include "nvn_window.h"
+ #include "momo_window_clear.h"
 diff --git a/native/nvn_present.h b/native/nvn_present.h
-index 8c0254b..1113bfd 100644
+index 8c0254b..bc55a44 100644
 --- a/native/nvn_present.h
 +++ b/native/nvn_present.h
 @@ -29,7 +29,8 @@ static void nvn_present_receipt(const char *status,unsigned nonblack,unsigned ma
@@ -72,7 +102,40 @@ index 8c0254b..1113bfd 100644
          directory=open(path,O_RDONLY|O_DIRECTORY|O_NOFOLLOW|O_CLOEXEC);
          if(directory<0)stop("NVN_RECEIPT_DIRECTORY_OPEN",nvn_caller,errno,21);
          printf("NVN_VIDEO_RECEIPTS path=%s format=jsonl files=group-N.jsonl group-frames=256 records=one-per-frame\n",path);
-@@ -314,6 +315,16 @@ static unsigned nvn_present_dispatch(unsigned id,struct nvn_frame *f,uint64_t *r
+@@ -230,7 +231,32 @@ static unsigned nvn_present_dispatch(unsigned id,struct nvn_frame *f,uint64_t *r
+     nvn_rt_storage_require(t);
+     glUniform2f(nvn_present.image_scale,scale*nvn_window.crop[2]/t->b.width,scale_y*nvn_window.crop[3]/t->b.height);
+     glUniform2f(nvn_present.image_offset,scale*nvn_window.crop[0]/t->b.width,scale_y*nvn_window.crop[1]/t->b.height);
++    {   /* One probe of the texture the present quad samples. Black + black means the guest replay never
++         * wrote visible pixels; black + lit source means the quad/UV/state is wrong. */
++        static unsigned probed;
++        if(probed<6) {
++            probed++;
++            GLint previous_fbo;GLuint fbo=0;glGetIntegerv(GL_FRAMEBUFFER_BINDING,&previous_fbo);
++            glGenFramebuffers(1,&fbo);glBindFramebuffer(GL_FRAMEBUFFER,fbo);
++            glFramebufferTexture2D(GL_FRAMEBUFFER,GL_COLOR_ATTACHMENT0,GL_TEXTURE_2D,t->name,0);
++            unsigned maximum=0;GLenum complete=glCheckFramebufferStatus(GL_FRAMEBUFFER);
++            if(complete==GL_FRAMEBUFFER_COMPLETE) {
++                unsigned char px[16*16*4];GLint pack;glGetIntegerv(GL_PACK_ALIGNMENT,&pack);glPixelStorei(GL_PACK_ALIGNMENT,1);
++                glReadPixels((GLint)((t->b.width/2)&~15u),(GLint)((t->b.height/2)&~15u),16,16,GL_RGBA,GL_UNSIGNED_BYTE,px);
++                glPixelStorei(GL_PACK_ALIGNMENT,pack);
++                for(unsigned i=0;i<16*16;i++)for(unsigned c=0;c<3;c++)if(px[i*4+c]>maximum)maximum=px[i*4+c];
++            }
++            glBindFramebuffer(GL_FRAMEBUFFER,(GLuint)previous_fbo);glDeleteFramebuffers(1,&fbo);
++            printf("NVN_PRESENT_SOURCE frame=%u id=%"PRIu64" size=%ux%u draws=%u complete=0x%x max=%u scale=%.3f/%.3f offset=%.3f/%.3f viewport=%d,%d,%d,%d\n",
++                nvn_present.frames+1,t->id,t->b.width,t->b.height,t->draws,(unsigned)complete,maximum,
++                (double)scale,(double)scale_y,(double)(nvn_window.crop[0]/t->b.width),(double)(nvn_window.crop[1]/t->b.height),
++                (int)rect->x,(int)rect->y,(int)rect->w,(int)rect->h);
++        }
++    }
+     glDrawArrays(GL_TRIANGLE_STRIP,0,4);nvn_present.frames++;
++    if(getenv("NX_PRESENT_CLEAR")){ /* Physical check: is the swap chain itself reaching the panel? */
++        static int told;glClearColor(1.0f,0.0f,1.0f,1.0f);glClear(GL_COLOR_BUFFER_BIT);
++        if(told++<3)printf("NVN_PRESENT_CLEAR frame=%u color=magenta error=0x%x\n",nvn_present.frames,(unsigned)glGetError());}
+     if(t2_video_needs_readback()) {
+         GLint viewport[4];EGLint measured_w=0,measured_h=0;
+         glGetIntegerv(GL_VIEWPORT,viewport);
+@@ -314,6 +340,16 @@ static unsigned nvn_present_dispatch(unsigned id,struct nvn_frame *f,uint64_t *r
      nxgl_frame_proof_before_present(width,height);
      if(!eglSwapInterval(nvn_device.display,0) || !nvn_platform_swap(nvn_device.display,nvn_window.surface))stop("NVN_PRESENT_SWAP_FAILED",nvn_caller,eglGetError(),22);
  #endif
@@ -128,7 +191,7 @@ index 0545586..d490ec7 100644
      nvn_gl_completion.completion_valid=0;
  }
 diff --git a/native/nvn_render.h b/native/nvn_render.h
-index 9713977..ef8eac8 100644
+index 9713977..fe1ab7d 100644
 --- a/native/nvn_render.h
 +++ b/native/nvn_render.h
 @@ -814,6 +814,47 @@ static void nvn_render_draw_inner(struct nvn_record *r) {
@@ -179,6 +242,154 @@ index 9713977..ef8eac8 100644
              if(location>=0)glUniform4fv(location,(GLsizei)(n/16),words);
              {GLenum e=glGetError();if(e)printf("NVN_UNIFORM_ARRAY_GL_ERROR bytes=%u vectors=%u error=0x%x\n",n,n/16,e);}
              free(words);
+@@ -1432,6 +1473,7 @@ static void nvn_render_draw_inner(struct nvn_record *r) {
+         uint64_t aw_probe_t0=0;if(tpf && nvn_replay.last_frame+1==tpf){glFinish();aw_probe_t0=nvn_nanoseconds();}
+         if(p->aw_noise_location>=0){glActiveTexture(GL_TEXTURE0+7);glBindTexture(GL_TEXTURE_2D,aw_noise.tex);GLint unit=7;nvn_uniform_send(p->aw_noise_location,NVN_UNIFORM_INT,&unit);glActiveTexture(GL_TEXTURE0);}
+ #endif
++        if(!depth_draw.active){GLfloat dr[2];glGetFloatv(GL_DEPTH_RANGE,dr);if(dr[0]==dr[1])glDepthRangef(0.0f,1.0f);}
+         if(indices)glDrawElements(primitive,count,GL_UNSIGNED_SHORT,indices);else glDrawArrays(primitive,0,count);
+         zero_depth_draw_end(&depth_draw);nvn_draw_finish_profile();
+ #ifdef ANIMAL_WELL_SHADERS
+@@ -1533,6 +1575,66 @@ static void nvn_render_draw_inner(struct nvn_record *r) {
+             }
+         }
+     }
++    if(nvn_replay.draws<=8){
++        if(getenv("NX_PROBE_QUAD")) {
++            /* One magenta quad straight into the target the guest just drew to: separates "guest geometry
++             * produced no pixels" from "our render-to-texture or present path drops them". */
++            static GLuint program,vbo,vao;static GLuint tex_names[4];
++            if(!program) {
++                const char *vs="#version 300 es\nlayout(location=0) in vec2 p;void main(){gl_Position=vec4(p,0.0,1.0);}\n";
++                const char *fs="#version 300 es\nprecision mediump float;out vec4 o;void main(){o=vec4(1.0,0.0,1.0,1.0);}\n";
++                GLuint shaders[2];program=glCreateProgram();
++                shaders[0]=glCreateShader(GL_VERTEX_SHADER);glShaderSource(shaders[0],1,&vs,NULL);glCompileShader(shaders[0]);
++                shaders[1]=glCreateShader(GL_FRAGMENT_SHADER);glShaderSource(shaders[1],1,&fs,NULL);glCompileShader(shaders[1]);
++                glAttachShader(program,shaders[0]);glAttachShader(program,shaders[1]);glBindAttribLocation(program,0,"p");glLinkProgram(program);
++                const float quad[8]={-1.0f,-1.0f,1.0f,-1.0f,-1.0f,1.0f,1.0f,1.0f};
++                glGenVertexArrays(1,&vao);glBindVertexArray(vao);
++                glGenBuffers(1,&vbo);glBindBuffer(GL_ARRAY_BUFFER,vbo);glBufferData(GL_ARRAY_BUFFER,sizeof(quad),quad,GL_STATIC_DRAW);
++                glEnableVertexAttribArray(0);glVertexAttribPointer(0,2,GL_FLOAT,GL_FALSE,0,(void *)0);
++            }
++            (void)tex_names;
++            GLint previous_program=0,previous_vao=0;glGetIntegerv(GL_CURRENT_PROGRAM,&previous_program);glGetIntegerv(GL_VERTEX_ARRAY_BINDING,&previous_vao);
++            glUseProgram(program);glBindVertexArray(vao);
++            GLboolean stencil_was_on=glIsEnabled(GL_STENCIL_TEST);GLint stencil_ref=0,stencil_mask=0;glGetIntegerv(GL_STENCIL_REF,&stencil_ref);glGetIntegerv(GL_STENCIL_VALUE_MASK,&stencil_mask);
++            glDisable(GL_BLEND);glDisable(GL_DEPTH_TEST);glDisable(GL_SCISSOR_TEST);glDisable(GL_CULL_FACE);glDisable(GL_STENCIL_TEST);
++            glColorMask(GL_TRUE,GL_TRUE,GL_TRUE,GL_TRUE);
++            {GLfloat near_now=0,far_now=0;GLboolean depth_mask_now=GL_TRUE;glGetFloatv(GL_DEPTH_RANGE,&near_now);glGetFloatv(GL_DEPTH_RANGE+1,&far_now);glGetBooleanv(GL_DEPTH_WRITEMASK,&depth_mask_now);
++             printf("NVN_DRAW_DEPTHSTATE number=%u range=%g..%g mask=%d\n",nvn_replay.draws,(double)near_now,(double)far_now,(int)depth_mask_now);
++             glDepthRangef(0.0f,1.0f);glDepthMask(GL_FALSE);}
++            glViewport(0,0,(GLsizei)nvn_render.target->b.width,(GLsizei)nvn_render.target->b.height);
++            glDrawArrays(GL_TRIANGLE_STRIP,0,4);
++            if(getenv("NX_PROBE_NO_DEPTH")){ /* Same quad again with the depth attachment detached. */
++                GLint depth_type=0,depth_name=0;
++                glGetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER,GL_DEPTH_ATTACHMENT,GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE,&depth_type);
++                glGetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER,GL_DEPTH_ATTACHMENT,GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME,&depth_name);
++                if(depth_type==GL_RENDERBUFFER){
++                    glFramebufferRenderbuffer(GL_FRAMEBUFFER,GL_DEPTH_ATTACHMENT,GL_RENDERBUFFER,0);
++                    GLenum without=glCheckFramebufferStatus(GL_FRAMEBUFFER);
++                    glClearColor(0.0f,1.0f,0.0f,1.0f);glClear(GL_COLOR_BUFFER_BIT);
++                    glFramebufferRenderbuffer(GL_FRAMEBUFFER,GL_DEPTH_ATTACHMENT,GL_RENDERBUFFER,(GLuint)depth_name);
++                    printf("NVN_PROBE_NO_DEPTH number=%u status-without=0x%x error=0x%x\n",nvn_replay.draws,(unsigned)without,(unsigned)glGetError());}
++            }
++            glUseProgram((GLuint)previous_program);glBindVertexArray((GLuint)previous_vao);
++            GLint bound_fbo=0;glGetIntegerv(GL_FRAMEBUFFER_BINDING,&bound_fbo);
++            GLint attached=0;glGetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER,GL_COLOR_ATTACHMENT0,GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME,&attached);
++            printf("NVN_PROBE_QUAD number=%u target=0x%"PRIx64" fbo=%d attach=%d match=%u stencil=%d ref=%d mask=0x%x error=0x%x\n",nvn_replay.draws,nvn_render.target->object,bound_fbo,attached,(unsigned)(attached==(GLint)nvn_render.target->name),(int)stencil_was_on,stencil_ref,stencil_mask,(unsigned)glGetError());
++        }
++        {GLint viewport_now[4];glGetIntegerv(GL_VIEWPORT,viewport_now);GLboolean mask_now[4];glGetBooleanv(GL_COLOR_WRITEMASK,mask_now);
++         GLint saved_unit=0;glGetIntegerv(GL_ACTIVE_TEXTURE,&saved_unit);unsigned bound_as_texture=0;
++         for(int unit=0;unit<16;unit++){GLint bound=0;glActiveTexture(GL_TEXTURE0+unit);glGetIntegerv(GL_TEXTURE_BINDING_2D,&bound);if(bound&&(GLuint)bound==nvn_render.target->name)bound_as_texture|=1u<<unit;}
++         glActiveTexture((GLenum)saved_unit);
++         GLenum bound_status=glCheckFramebufferStatus(GL_FRAMEBUFFER);GLint depth_type=0,depth_name=0;
++         glGetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER,GL_DEPTH_ATTACHMENT,GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE,&depth_type);
++         glGetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER,GL_DEPTH_ATTACHMENT,GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME,&depth_name);
++         GLint color_tex_w=(GLint)nvn_render.target->host_width,color_tex_h=(GLint)nvn_render.target->host_height,depth_rb_w=0,depth_rb_h=0;
++         if(depth_type==GL_RENDERBUFFER){GLint saved_rb=0;glGetIntegerv(GL_RENDERBUFFER_BINDING,&saved_rb);glBindRenderbuffer(GL_RENDERBUFFER,(GLuint)depth_name);
++             glGetRenderbufferParameteriv(GL_RENDERBUFFER,GL_RENDERBUFFER_WIDTH,&depth_rb_w);glGetRenderbufferParameteriv(GL_RENDERBUFFER,GL_RENDERBUFFER_HEIGHT,&depth_rb_h);
++             glBindRenderbuffer(GL_RENDERBUFFER,(GLuint)saved_rb);}
++         printf("NVN_DRAW_SIZES number=%u scaled=%d host=%dx%d depth-rb=%dx%d logical=%ux%u\n",nvn_replay.draws,(int)nvn_render.target->host_scaled,color_tex_w,color_tex_h,depth_rb_w,depth_rb_h,nvn_render.target->b.width,nvn_render.target->b.height);
++         printf("NVN_DRAW_FBO number=%u status=0x%x depth-type=0x%x depth-name=%d target=%ux%u\n",nvn_replay.draws,(unsigned)bound_status,(unsigned)depth_type,depth_name,nvn_render.target->b.width,nvn_render.target->b.height);
++         printf("NVN_DRAW_STATE number=%u viewport=%d,%d,%d,%d mask=%d,%d,%d,%d discard=%d texture-units=0x%x\n",nvn_replay.draws,viewport_now[0],viewport_now[1],viewport_now[2],viewport_now[3],mask_now[0],mask_now[1],mask_now[2],mask_now[3],(int)glIsEnabled(GL_RASTERIZER_DISCARD),bound_as_texture);}
++        unsigned complete=0;unsigned char px[4]={0,0,0,0};unsigned max=nvn_texture_probe_max(nvn_render.target,&complete,px);
++        printf("NVN_DRAW_PIXELS number=%u target=0x%"PRIx64" complete=0x%x max=%u px=%u,%u,%u,%u readerr=0x%x\n",nvn_replay.draws,nvn_render.target->object,complete,max,px[0],px[1],px[2],px[3],(unsigned)glGetError());}
+     if(nvn_replay.draws<=8)printf("NVN_GAME_DRAW number=%u count=%"PRIu64" primitive=%u program=%u target=0x%"PRIx64" emitted=%u\n",nvn_replay.draws,count,primitive,program,nvn_render.target->object,!elided);
+ }
+ static void nvn_render_draw(struct nvn_record *r) {
+@@ -1681,6 +1783,7 @@ static unsigned nvn_render_record(struct nvn_record *r) {
+         return 1;
+     }
+     case NI_nvnCommandBufferSetRenderTargets: {
++#define NVN_RT_STEP(tag) {GLenum step_error=glGetError();if(step_error)printf("NVN_RT_STEP step=%s error=0x%x\n",tag,(unsigned)step_error);}
+         uint64_t targets[2];memcpy(targets,r->payload,16);struct nvn_texture *d=targets[1]?nvn_texture_find(targets[1]):NULL;
+ #if ZERO_ZX_GAME
+         for(unsigned i=0;i<2;i++)if(a[i?4:2]) {
+@@ -1707,7 +1810,7 @@ static unsigned nvn_render_record(struct nvn_record *r) {
+         }
+         struct nvn_texture *t=nvn_texture_find(targets[0]);
+         nvn_cpu_image_require_target(t);nvn_cpu_image_require_target(d);
+-        nvn_rt_storage_target(t,d);
++        nvn_rt_storage_target(t,d);NVN_RT_STEP("storage");
+         nvn_mfc_target(t);nvn_mfc_target(d);
+         t->composition_target_seen=1;t->composition_initial_uniform=0;
+         zero_texture_storage_state(t)->composition_target_seen=1;
+@@ -1726,9 +1829,9 @@ static unsigned nvn_render_record(struct nvn_record *r) {
+             nvn_render.pending_color_valid=nvn_render.pending_depth_valid=0;aw_deferred.passes++;return 1;
+         }
+ #endif
+-        nvn_depth_leave(nvn_render.target,nvn_render.depth,nvn_render.framebuffer,t,d);
++        nvn_depth_leave(nvn_render.target,nvn_render.depth,nvn_render.framebuffer,t,d);NVN_RT_STEP("depth-leave");
+         if(nvn_render.depth && (nvn_render.depth!=d || nvn_render.target!=t) && !nvn_render.pass_skipped)zero_udd_leave(nvn_render.depth,nvn_render.framebuffer);
+-        nvn_normal_discard_target(nvn_render.target,nvn_render.framebuffer,t);
++        nvn_normal_discard_target(nvn_render.target,nvn_render.framebuffer,t);NVN_RT_STEP("discard");
+         /* Opt-in COTM_DEPTH_DISCARD_ALL: every pass clears its depth on entry,
+          * so the depth tiles of the pass being left never need a write-back. */
+         static int dd_configured;static unsigned dd_enabled;static uint64_t dd_count;
+@@ -1744,7 +1847,7 @@ static unsigned nvn_render_record(struct nvn_record *r) {
+         if(!skip_configured){const char *o=getenv("COTM_NORMAL_PASS_SKIP");skip_enabled=o&&!strcmp(o,"1");skip_configured=1;if(skip_enabled)printf("NVN_NORMAL_PASS_SKIP_EXPERIMENT enabled=1 skipped=bind+clears of guarded normal targets\n");}
+         nvn_render.pass_skipped=skip_enabled&&t->normal_guarded&&nvn_low_color(t)<0;
+         if(nvn_render.pass_skipped){nvn_render.framebuffer=0;nvn_render.target=t;nvn_render.depth=d;nvn_render.pass_skips++;nvn_render.pending_color_valid=nvn_render.pending_depth_valid=0;return 1;}
+-        nvn_render.framebuffer=nvn_framebuffer_bind(t,d);
++        nvn_render.framebuffer=nvn_framebuffer_bind(t,d);NVN_RT_STEP("bind");
+         zero_udd_restore(d);
+         if(t->host_scaled&&!t->host_scaled_bound){t->host_scaled_bound=1;
+             printf("NVN_LC2_SCALED_TARGET object=0x%"PRIx64" id=%"PRIu64" texture=%u pool=0x%"PRIx64" format=0x%x flags=0x%x depth=%"PRIu64" framebuffer=%u logical=%ux%u actual=%ux%u shader-binding=resolved-at-draw\n",
+diff --git a/native/nvn_replay.h b/native/nvn_replay.h
+index b3d6c20..4473d89 100644
+--- a/native/nvn_replay.h
++++ b/native/nvn_replay.h
+@@ -332,9 +332,10 @@ static uint64_t nvn_replay_run_list(struct nvn_command_list *list,unsigned batch
+                     if(nvn_render.program)printf("AW_GL_ERROR_PROGRAM pair=%u/%u target=%"PRIu64"\n",nvn_render.program->sources[0],nvn_render.program->sources[1],nvn_render.target?nvn_render.target->id:0);
+                     stop("NVN_REPLAY_GL_ERROR",nvn_caller,e,21);}}
+ #else
+-                if(!batch_errors||nvn_draw_diagnostic_active())nvn_replay_error_boundary();
++                if(!batch_errors||nvn_draw_diagnostic_active()){GLenum e=glGetError();if(e){printf("NVN_GL_ERROR op=%s error=0x%x draws=%u frame=%u target=%"PRIu64"\n",nvn_functions[r.op].name,e,nvn_replay.draws,nvn_replay.last_frame,nvn_render.target?nvn_render.target->id:0);stop("NVN_REPLAY_GL_ERROR",nvn_caller,e,21);}}
+ #endif
+                 zero_gpu_cost_context("outside-record",0,0,0,0,0,0);
++                nvn_replay_last_op=nvn_functions[r.op].name;
+                 consumed+=r.bytes;next=r.next;
+             }
+             if(next || consumed!=list->recorded_bytes)stop("NVN_COMMAND_RECORD_COUNT",nvn_caller,next,24);
+diff --git a/native/nvn_replay_errors.h b/native/nvn_replay_errors.h
+index 8d9b110..3d156d1 100644
+--- a/native/nvn_replay_errors.h
++++ b/native/nvn_replay_errors.h
+@@ -1,6 +1,7 @@
+ /* B12 preserves an error boundary before a list can be submitted as complete.
+  * Explicit draw diagnostics retain the finer per-record attribution. */
+ static unsigned nvn_replay_errors_per_list;
++static const char *nvn_replay_last_op="start";
+ static pthread_once_t nvn_replay_errors_once=PTHREAD_ONCE_INIT;
+ static void nvn_replay_errors_configure(void) {
+     const char *option=getenv("COTM_GL_ERROR_PER_LIST");
+@@ -13,5 +14,5 @@ static unsigned nvn_replay_errors_batched(void) {
+     return nvn_replay_errors_per_list;
+ }
+ static void nvn_replay_error_boundary(void) {
+-    GLenum error=glGetError();if(error)stop("NVN_REPLAY_GL_ERROR",nvn_caller,error,21);
++    GLenum error=glGetError();if(error){printf("NVN_GL_ERROR op=%s error=0x%x\n",nvn_replay_last_op,(unsigned)error);stop("NVN_REPLAY_GL_ERROR",nvn_caller,error,21);}
+ }
 diff --git a/native/nvn_shaders.h b/native/nvn_shaders.h
 index f12a975..b329737 100644
 --- a/native/nvn_shaders.h

@@ -38,6 +38,15 @@ export T2_GPU_PIPELINE=0
 # 140 MiB guard before the first scene. Lower it for bring-up; raise it again once the footprint is known.
 # Boot load takes >30 s on this board (asset decode); the loader watchdog defaults to 20 s.
 export MEGAMAN_PROBE_SECONDS="${MEGAMAN_PROBE_SECONDS:-240}"
+# Bring-up: the title stays black while assets decode; keep the black-streak guard from ending the run.
+# Bring-up diagnostic: magenta quad into the guest target, to separate guest geometry from present.
+# Physical swap-chain check: clear the window to magenta before the swap.
+# Catch the first GL error per command record instead of at list submit.
+export COTM_GL_ERROR_PER_LIST="${COTM_GL_ERROR_PER_LIST:-1}"
+export NX_PRESENT_CLEAR="${NX_PRESENT_CLEAR:-0}"
+export NX_PROBE_NO_DEPTH="${NX_PROBE_NO_DEPTH:-0}"
+export NX_PROBE_QUAD="${NX_PROBE_QUAD:-0}"
+export COTM_BLACK_LIMIT="${COTM_BLACK_LIMIT:-3000}"
 export T2_MEMORY_FLOOR_MIB="${T2_MEMORY_FLOOR_MIB:-32}"
 export SDL_VIDEODRIVER=kmsdrm SDL_AUDIODRIVER=alsa
 # The firmware's bundled libasound (LD_LIBRARY_PATH=/usr/trimui/lib) cannot resolve

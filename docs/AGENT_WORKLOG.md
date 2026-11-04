@@ -136,3 +136,18 @@ So the upload/decode is faithful — the snapshot at creation time is genuinely 
 That also reframes the earlier datum: the zero bytes in `MOMO_TINY_TEX` are at creation time through `pool->address+b.offset+levels[0]`; the texture that program 2 samples at frame 100 is the same object id but no longer carries that pool. Next probe must therefore resolve the sampled texture by GL name (`nvn_textures[i].name`) instead of by guest id, print `live/packaged/packaged_uploaded/target/pool`, and read the guest bytes through whatever storage the struct actually has.
 
 Also noted: `NVN_COPY_STALE_OBJECT` count is 0 and `NVN_COPY_BUFFER` is 0 in this run, so no copy is being dropped as stale.
+
+## 0102–0108: the 4x4 atlas is stale, and after fixing it the frame is still black
+
+**Fixed (verified on device), 0108 = `b9fa845c…5b7f`:**
+`nvn_texture_small_reload()` (nvn_textures.h, called from the sampler bind right after `nvn_cpu_image_refresh`) hashes the guest rows of every ≤64x64 single-level texture and re-uploads it with `glTexSubImage2D` when the bytes differ from what we last pushed. Infernax's atlas lives in an uncached pool, so no `FlushMappedRange` ever marks `zero_cpu_dirty` and the sampled image kept the all-zero snapshot from creation.
+Evidence:
+```
+T2_TEX_RELOAD id=36 name=5 4x4 fmt=0x25 first=255,255,255,255
+T2_TEX_SAMPLED id=36 name=5 4x4 status=0x8cd5 px=255,255,255,255   (was 0,0,0,0)
+```
+Two failed placements, for the record: calling the reload from the `zero_texture_refresh` site (nvn_render.h:385) hangs the guest in init (`STOP status=TIME_LIMIT`, zero draws) because that path is not the GL-owning one; the sampler bind at the `nvn_cpu_image_refresh` line is safe.
+
+**Still black, and now a different question:** with the sampled atlas provably white, `NVN_DRAW_PIXELS number=2` is still `max=0`, and the live screenshot is `(0,0,0)` on all channels. So the black is the *fragment output* of program 2 (pair 2/0), not the texture: next probe is its cbuf/uniform colour, plus a forced-FS-colour draw to prove the draw writes anything at all.
+
+**Tooling blocker:** chatgpt-use refuses to run ("could not find the composer model picker: composer toolbar not found") for both `high` and `current`, so the per-step consultation the user asked for could not happen this session.

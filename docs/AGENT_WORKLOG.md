@@ -278,3 +278,25 @@ Two separate faults, both now measured:
 So the swapchain is not "half painted": it carries a single 1280×720 clear/quad in the corner of a
 1920×1080 image. The guest's viewport is 1280×720 while the presented surface is 1920×1080 — a real
 size mismatch — and the game's own scene drawing still produces nothing inside that region.
+
+## 0136–0137: draw state is clean, and the tiles do cover the screen
+
+`NX_DRAW_STATE=1` at the draw call:
+
+```
+n=1 prog=2 count=6 mask=1111 blend=0 depth=0 stencil=0 scissor_test=1 vp=0,0,1280,720 sc=0,0,16384,16384
+```
+
+Colour writes on, blending off, depth test off, stencil off, scissor wide, viewport exactly 1280×720.
+Nothing in the GL state can swallow these fragments — so the geometry itself is outside clip space.
+
+`MOMO_UNIFORM_PAIR=2/0` (existing dump) over consecutive draws of frame 1, `target=132`:
+
+- draw 2: binding 2 = `4000 0 0 0 | 0 4000 0 0 | 0 0 1 0 | 640 2000 -98 1` — x centred (640), y=2000 above the top.
+- draw 3: same scale, translation `3280 -360 -98` — right of the screen, y correct.
+- binding 1 is the projection `2/1280, -2/720, -1, -1, 1`.
+
+So the draws form a tile grid: individual tiles sit outside the view, but *some* tiles of a 532-draw frame must
+land inside. That contradicts the fully black 1280×720 target from 0133/0135 and points at the target the dump
+names (`id=132`) not being the texture the whole-surface probe read (`0x3a518c228`). That identity is the next
+thing to pin down, before touching any transform.

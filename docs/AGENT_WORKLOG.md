@@ -577,3 +577,28 @@ Original and reflection Hades outputs are byte-identical: GLSL
 `9e6deadd029e52cc1136e7a252be7f8deaafed8d79ded2381edc5b5d4047909b`.
 Candidate 0163 appends index 17 only, preserving all previous 17 initializers and the strict boundary 15.
 No native renderer change; device result remains pending.
+
+## 0163 device result; 0164 exact fragment candidate
+
+Consultation `infernax-0163-vertex-582e82d` completed. Build 0163 passed 29 tests and built with
+0 errors / 4 existing warnings; SHA-256
+`9cf9540ffec61f3886fc1e89e232271cea81bbb2b07a16bc7e33287aa734f838`.
+Atomic install/fresh readback and backup out161 verified. The c1 literal is read from **code** offset
+0x600 (word `0x509502f9`), inside the range [0x600,0x700) selected by control offsets 0x700/0x704;
+the literal value itself is not in the control blob.
+
+Arm `arm-cm-163-vertex-1793833660` retained FULL=0 and every safety limit. Sampled RSS max 746760 KiB,
+MemAvailable min 50608 KiB, no resource guard. Exact index 17 appeared; the next missing shader is
+another 512-byte fragment stage, reached at present frame 232. No new pair 17/18 link verdict yet.
+Cleanup returned to Spruce with no target/wrappers/handoff. The image goal remains unmet.
+
+Candidate 0164 appends index 18 only (catalogue 19); prior 18 initializers and strict boundary 15
+are unchanged. Code/control:
+`8572cb0aa8ced28417b5cbd36d8f2486acbe79b23fdc45ca2ca6160381d2a4ad` /
+`b71eaefa3fc9a3d1d9f103aa43862ad3d2c8cbe29656154f657694dd383a2924`.
+Both Hades compilers produce identical GLSL
+`6142a5d067ce127c08d2306a436184ee25b21cfd07259de0406da8cb09ac88c2` and SPIR-V
+`afc655279365fdce0733c3b0115b41dac2eeb8beaf39ad6240c5ff90fc61d659`.
+Actual reflection carries two independent combined-at-GL operands: texture c2 0x168 / sampler c2 0x568,
+and texture c2 0x170 / sampler c2 0x570. The FS uses varying 1.xy for sampled RGB and varying 3.xy
+for sampled alpha, multiplied by varying 0; no guessed shared sampler. Native rendering code unchanged.

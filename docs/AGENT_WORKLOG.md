@@ -195,3 +195,18 @@ seen in `MOMO_UNIFORM_ENTRY`.
 
 Next: locate that table, read the VS for the pair used by the failing draw, and check how it combines
 `vs_c3` / `vs_c4_1` / `vs_c5_1` before changing anything about the constants.
+
+## 0122–0124: constants are live, writes are allowed, fragments never arrive
+
+- `MOMO_UNIFORM_PAIR=2/0 MOMO_UNIFORM_AFTER=20` shows the world matrix changing every draw
+  (`640,2000,-98` → `3280,-360,-98` → `640,-2720,-98`), so the constants are not a stale snapshot.
+- The VS is mathematically correct: it does `world` (`vs_c5_1`) then `proj` (`vs_c4_1`) in proper
+  column-major order (`x*e0 + y*e4 + z*e8 + e12`), verified by expanding the generated GLSL.
+- `proj` maps `y` through `-2/720` with `ty=-1`, i.e. on-screen only for `y∈[-720,0]`; the world matrix
+  yields `y≈2000`, so the sprite is outside the clip volume unless the vertex data is in a different
+  space than assumed. That is the remaining unknown.
+- `NVN_DRAW_WRITE` for draws 0..3: `mask=1111`, `blend=0`, `src=ONE dst=ZERO` — fragments are allowed
+  to write, so the red pre-clear surviving means no fragment was ever produced.
+- Vertex source next: `nvn_render_state.h` can point attribute 0 at a client array (`buffer=0`), which
+  GLES 3 does not accept; `NVN_DRAW_SRC` prints the array-buffer binding, pointer and, for the client
+  path, the first four positions read straight from that memory.

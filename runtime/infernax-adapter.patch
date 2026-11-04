@@ -218,7 +218,7 @@ index 0545586..d490ec7 100644
      nvn_gl_completion.completion_valid=0;
  }
 diff --git a/native/nvn_render.h b/native/nvn_render.h
-index 9713977..953f994 100644
+index 9713977..9696f73 100644
 --- a/native/nvn_render.h
 +++ b/native/nvn_render.h
 @@ -12,6 +12,10 @@ static struct {
@@ -538,7 +538,7 @@ index 9713977..953f994 100644
          }
      }
      nvn_render_client_buffers();
-@@ -1432,7 +1646,86 @@ static void nvn_render_draw_inner(struct nvn_record *r) {
+@@ -1432,7 +1646,97 @@ static void nvn_render_draw_inner(struct nvn_record *r) {
          uint64_t aw_probe_t0=0;if(tpf && nvn_replay.last_frame+1==tpf){glFinish();aw_probe_t0=nvn_nanoseconds();}
          if(p->aw_noise_location>=0){glActiveTexture(GL_TEXTURE0+7);glBindTexture(GL_TEXTURE_2D,aw_noise.tex);GLint unit=7;nvn_uniform_send(p->aw_noise_location,NVN_UNIFORM_INT,&unit);glActiveTexture(GL_TEXTURE0);}
  #endif
@@ -610,6 +610,17 @@ index 9713977..953f994 100644
 +                for(GLsizei k=0;k<cnt;k++){GLint tl=0;glGetShaderiv(sh[k],GL_SHADER_TYPE,&tl);GLint len=0;glGetShaderiv(sh[k],GL_SHADER_SOURCE_LENGTH,&len);
 +                    if(len>0&&len<20000){char *b=(char*)malloc((size_t)len+1);GLsizei got=0;glGetShaderSource(sh[k],len,&got,b);b[got]=0;
 +                        printf("NVN_SHADER_SRC type=%s id=%u len=%d\n%s\nNVN_SHADER_END\n",tl==GL_VERTEX_SHADER?"VERTEX":"FRAGMENT",(unsigned)sh[k],got,b);free(b);}}}
++            if(nvn_replay.draws<=3){GLboolean cm[4]={0};GLint bm=GL_NONE,be=GL_NONE;
++                glGetBooleanv(GL_COLOR_WRITEMASK,cm);glGetIntegerv(GL_BLEND_SRC_RGB,&bm);glGetIntegerv(GL_BLEND_DST_RGB,&be);
++                printf("NVN_DRAW_WRITE number=%u mask=%d%d%d%d blend=%d src=0x%x dst=0x%x\n",nvn_replay.draws,
++                       (int)cm[0],(int)cm[1],(int)cm[2],(int)cm[3],(int)glIsEnabled(GL_BLEND),(unsigned)bm,(unsigned)be);}
++            if(nvn_replay.draws<=3){GLint ab=0,st2=0;void*dp=NULL;glGetIntegerv(GL_ARRAY_BUFFER_BINDING,&ab);
++                glGetVertexAttribiv(0,GL_VERTEX_ATTRIB_ARRAY_STRIDE,&st2);glGetVertexAttribPointerv(0,GL_VERTEX_ATTRIB_ARRAY_POINTER,&dp);
++                printf("NVN_DRAW_SRC number=%u abinding=%d ptr=%p stride=%d",nvn_replay.draws,ab,dp,st2);
++                if(ab==0&&dp){const float *f=(const float*)dp;printf(" client:");
++                    for(int v=0;v<4;v++){const float *q=(const float*)((const char*)f+(size_t)v*(st2?st2:12));
++                        printf(" [%g %g %g]",(double)q[0],(double)q[1],(double)q[2]);}}
++                printf("\n");}
 +            {GLint prog=0;glGetIntegerv(GL_CURRENT_PROGRAM,&prog);printf("NVN_DRAW_PROG number=%u program=%d attribs:",nvn_replay.draws,prog);
 +             for(int i=0;i<8;i++){GLint en=0,sz=0,ty=0,st=0;glGetVertexAttribiv(i,GL_VERTEX_ATTRIB_ARRAY_ENABLED,&en);
 +                 glGetVertexAttribiv(i,GL_VERTEX_ATTRIB_ARRAY_SIZE,&sz);glGetVertexAttribiv(i,GL_VERTEX_ATTRIB_ARRAY_TYPE,&ty);
@@ -625,7 +636,7 @@ index 9713977..953f994 100644
          zero_depth_draw_end(&depth_draw);nvn_draw_finish_profile();
  #ifdef ANIMAL_WELL_SHADERS
          nvn_render.target->aw_draws_since_clear++;
-@@ -1533,6 +1826,66 @@ static void nvn_render_draw_inner(struct nvn_record *r) {
+@@ -1533,6 +1837,66 @@ static void nvn_render_draw_inner(struct nvn_record *r) {
              }
          }
      }
@@ -692,7 +703,7 @@ index 9713977..953f994 100644
      if(nvn_replay.draws<=8)printf("NVN_GAME_DRAW number=%u count=%"PRIu64" primitive=%u program=%u target=0x%"PRIx64" emitted=%u\n",nvn_replay.draws,count,primitive,program,nvn_render.target->object,!elided);
  }
  static void nvn_render_draw(struct nvn_record *r) {
-@@ -1665,22 +2018,45 @@ static unsigned nvn_render_record(struct nvn_record *r) {
+@@ -1665,22 +2029,45 @@ static unsigned nvn_render_record(struct nvn_record *r) {
          return 1;
      case NI_nvnCommandBufferBindTexture:
          if(a[0]>1 || a[1]>=128)stop("NVN_TEXTURE_BINDING_REQUIRED",nvn_caller,a[1],20);
@@ -739,7 +750,7 @@ index 9713977..953f994 100644
          uint64_t targets[2];memcpy(targets,r->payload,16);struct nvn_texture *d=targets[1]?nvn_texture_find(targets[1]):NULL;
  #if ZERO_ZX_GAME
          for(unsigned i=0;i<2;i++)if(a[i?4:2]) {
-@@ -1707,7 +2083,7 @@ static unsigned nvn_render_record(struct nvn_record *r) {
+@@ -1707,7 +2094,7 @@ static unsigned nvn_render_record(struct nvn_record *r) {
          }
          struct nvn_texture *t=nvn_texture_find(targets[0]);
          nvn_cpu_image_require_target(t);nvn_cpu_image_require_target(d);
@@ -748,7 +759,7 @@ index 9713977..953f994 100644
          nvn_mfc_target(t);nvn_mfc_target(d);
          t->composition_target_seen=1;t->composition_initial_uniform=0;
          zero_texture_storage_state(t)->composition_target_seen=1;
-@@ -1726,9 +2102,9 @@ static unsigned nvn_render_record(struct nvn_record *r) {
+@@ -1726,9 +2113,9 @@ static unsigned nvn_render_record(struct nvn_record *r) {
              nvn_render.pending_color_valid=nvn_render.pending_depth_valid=0;aw_deferred.passes++;return 1;
          }
  #endif
@@ -760,7 +771,7 @@ index 9713977..953f994 100644
          /* Opt-in COTM_DEPTH_DISCARD_ALL: every pass clears its depth on entry,
           * so the depth tiles of the pass being left never need a write-back. */
          static int dd_configured;static unsigned dd_enabled;static uint64_t dd_count;
-@@ -1744,7 +2120,7 @@ static unsigned nvn_render_record(struct nvn_record *r) {
+@@ -1744,7 +2131,7 @@ static unsigned nvn_render_record(struct nvn_record *r) {
          if(!skip_configured){const char *o=getenv("COTM_NORMAL_PASS_SKIP");skip_enabled=o&&!strcmp(o,"1");skip_configured=1;if(skip_enabled)printf("NVN_NORMAL_PASS_SKIP_EXPERIMENT enabled=1 skipped=bind+clears of guarded normal targets\n");}
          nvn_render.pass_skipped=skip_enabled&&t->normal_guarded&&nvn_low_color(t)<0;
          if(nvn_render.pass_skipped){nvn_render.framebuffer=0;nvn_render.target=t;nvn_render.depth=d;nvn_render.pass_skips++;nvn_render.pending_color_valid=nvn_render.pending_depth_valid=0;return 1;}

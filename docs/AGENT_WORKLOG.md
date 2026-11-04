@@ -151,3 +151,21 @@ Two failed placements, for the record: calling the reload from the `zero_texture
 **Still black, and now a different question:** with the sampled atlas provably white, `NVN_DRAW_PIXELS number=2` is still `max=0`, and the live screenshot is `(0,0,0)` on all channels. So the black is the *fragment output* of program 2 (pair 2/0), not the texture: next probe is its cbuf/uniform colour, plus a forced-FS-colour draw to prove the draw writes anything at all.
 
 **Tooling blocker:** chatgpt-use refuses to run ("could not find the composer model picker: composer toolbar not found") for both `high` and `current`, so the per-step consultation the user asked for could not happen this session.
+
+## 0109–0113: the scene draws write nothing at all
+
+`NVN_DRAW_PIXELS max=0` was never "the draw wrote black" — it was the black clear surviving. Pre-clearing the target to red (`NX_DEBUG_CLEAR_RED=1`) proves it:
+
+```
+number=1 px=255,0,0,255   -> red survives (draw 1 is 1024x32 program 1 in the earlier numbering)
+number=2 px=255,0,0,255
+number=3 px=255,0,0,255
+```
+
+With red in front of them, the program-2 draws change no pixel. Ruled out in the same run, one variable at a time:
+- culling (`NX_NO_CULL=1`): still nothing written, so it is not a winding/cull mismatch.
+- depth (`NX_NO_DEPTH=1`): still nothing written, so it is not `GL_LESS` against a 0.0 depth clear.
+- viewport/scissor: `NVN_DRAW_RECT` shows `viewport=0,0 1280x720`, `scissorbox=0,0 16384x16384` — not clipped away.
+- geometry is submitted: `NVN_DRAW_GEOM prim=0x4 count=6 indices=1`.
+
+What is left is that the vertex stage collapses the triangles: the transform program 2 reads is zero/wrong (cbuf or UBO binding) rather than the matrix the oracle computed. Next probe: dump the actual transform constants bound for program 2 at its draw, not the ones we believe we sent.

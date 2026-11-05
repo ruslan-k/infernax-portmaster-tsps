@@ -1073,3 +1073,23 @@ through mapped command buffers + a submit, so the HLE has to (1) record MapComma
 (2) parse the submit's command words (`0x20000000|count<<16|offset` "increment" opcodes to
 `NvdecRegisters`), (3) decode H.264 with libavcodec into the nvmap surface, (4) signal the
 syncpoint the `EventRegister`/wait path is blocked on.
+
+### Two media starts, and why probes diverge
+Runs split into two shapes with the same binary:
+- **decoder shape** (`0170f-1793900534`): `/dev/nvhost-nvdec` -> `/dev/nvhost-vic`, then
+  `MapCommandBuffer`, `EventRegister`, `UnmapCommandBuffer`. 10 probe ioctls, no submit.
+- **audio shape** (`0170f-1793902041`, `0170f-1793903156`): a `1280x720` NVN target is
+  created (the movie surface) and the game spins on audout: `command=0x7`
+  (AppendAudioOutBuffer) and `0x8` (ReleasedAudioOutBuffer), tens of thousands of calls,
+  `nonzero-total=0`. That is the movie pumping silence because nothing was decoded — a
+  symptom, not an audout bug.
+
+So a probe only reaches the decoder when the pad press lands at the right moment; pressing
+from a fixed 60 s or 120 s schedule lands in the audio shape. Until the decode path exists,
+the useful comparison is "did nvdec open" per run, and the run must be driven by the
+`pad-loop.sh` schedule only after the mature-content frame is on screen.
+
+Next implementation slice (no more probing until it exists): MapCommandBuffer state table,
+`SubmitArguments` parser that logs command words (`0x2xxxxxxx` increment opcodes to
+`NvdecRegisters`), `EventRegister` returning a real event id, then libavcodec H.264 into
+the mapped nvmap surface.

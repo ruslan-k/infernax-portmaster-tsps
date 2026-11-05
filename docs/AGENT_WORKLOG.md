@@ -726,3 +726,34 @@ Spruce Recents menu, Infernax selected, not a black frame or game menu.
 
 Next decision: a single unchanged repeat to complete the censored input arm, or offline memory/video
 attribution. Do not invent a negative skip result, raise guards, or add decoder success stubs.
+
+## 0168: identical repeat is also guard-censored; stop unchanged retries
+
+The repeat used the same out166 runtime, controller167, environment and guards as
+0167; only the output directory and run ID changed. It stopped at present12 with
+VmRSS **766996 KiB** (RssAnon 242836, RssFile 523220, RssShmem 940),
+MemAvailable **86948 KiB**, and VmSwap 461128 KiB. RSS exceeded the unchanged
+753664 KiB limit; neither FIRST_PIXELS nor a diagnostic Start press occurred.
+This is another **censored experiment**, not evidence that Start cannot skip the
+intro. Do not repeat this unchanged arm or raise its guards to obtain a result.
+
+Both early SIGUSR1 capture requests reached black presents; no content PPM was
+written. Source review shows a requested capture can still perform a full RGBA
+readback before rejecting a black frame, while NX_TGT_FIRST performs 16x16
+readbacks plus glFinish at target changes. These are possible observer effects,
+not an attributed cause of the RSS peak. The attribution reader missed its
+500 ms deadline (reported elapsed 11520 ms), so no complete live mapping snapshot
+is available and no claim about actual memory ownership is justified.
+
+The controller reports no remaining game/wrapper or pending handoff. Independent
+fresh SSH confirms MainUI PID11769 and no running Infernax. The copied real KMS
+cleanup capture was visually checked: Spruce Recents with Infernax selected,
+**not the game menu**. Runtime, launcher, assets and saves remain unchanged.
+
+Offline-only follow-up validated every regenerated module segment against its
+recorded size/SHA-256, then enumerated real MOD0 dynamic symbols. The game ships
+software AVC decoding (`android::SoftAVC`, `SoftAVC_createSoftOMXComponent`) as well
+as Nvidia decoding. This establishes an implementation candidate only; it does
+not prove software codec selection avoids nvdec initialization or that its
+output/presentation works. No codec switch or fabricated NV device success has
+been installed.

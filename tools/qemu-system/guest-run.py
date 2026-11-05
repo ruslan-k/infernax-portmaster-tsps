@@ -22,8 +22,13 @@ assert content_frame('NVN_PRESENT_PIXELS frame=600 nonblack=42841 max=32 texture
 
 source = Path(sys.argv[1]).resolve()
 tag = sys.argv[2]
+# Optional single-variable arms. 'nvdec-deny' reports the absent hardware video
+# decoder to the guest instead of stopping the runtime (truthful failure, no
+# synthetic success); every other arm keeps the default environment.
+arm = sys.argv[3] if len(sys.argv) > 3 else ''
+assert arm in ('', 'nvdec-deny'), arm
 assert source.parent == Path('/mnt/host') and source.name in ('baseline', 'candidate0170')
-assert re.fullmatch(r'0170[ab]', tag), tag
+assert re.fullmatch(r'0170[abc]', tag), tag
 runtime = Path('/mnt/host/baseline/infernax-nextos')
 assert hashlib.sha256(runtime.read_bytes()).hexdigest() == '258a53591bdb77d7a41a92be2a7453fb4e4b8ee1282754a5aa5607fa383cbe86'
 runid = str(int(time.time()))
@@ -63,6 +68,8 @@ env = dict(os.environ, DISPLAY=':0', SDL_VIDEODRIVER='x11',
            NX_SCENE_AUDIT='1', NX_PROBE_FULL='0', NX_PROBE_DUMP='1', NX_TGT_FIRST='1',
            MOMO_TRACE_UNIFORM_BINDS='0')
 assert 'NX_NVDEC_OPEN_DENY' not in env
+if arm == 'nvdec-deny':
+    env['NX_NVDEC_OPEN_DENY'] = '1'
 padtool = '/mnt/host/tools/uinput_pad.py'
 env['SDL_GAMECONTROLLERCONFIG'] = subprocess.check_output([sys.executable, padtool, '--mapping'], text=True).strip()
 padenv = dict(env, UINPUT_FIFO=str(work / 'pad.fifo'))

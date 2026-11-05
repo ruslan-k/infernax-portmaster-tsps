@@ -856,3 +856,28 @@ AVC decoder remain unproven**; R1 has no receipt yet.
 
 No synthetic nvdec success, no movie removal, no quality reduction, no guard
 change and no device deployment accompanied this run.
+
+### 0170c: truthful NV denie inside the VM reproduces an SDK-side crash, not a game-side one
+
+To separate "the movie path never reached the decoder" from "the decoder failed and the
+game reacted", the unmodified baseline runtime was run once more in the same VM with
+`NX_NVDEC_OPEN_DENY=1` (arm `nvdec-deny`, source `/mnt/host/baseline`, run
+`0170c-1793879399`, 210.2 s, rc 22). The denie path returns error `0x30011` with an
+invalid fd to the guest — a truthful failure, no synthetic success.
+
+Result: the guest takes the failure and the fault lands **inside the SDK**, not in game
+code — `pc=subsdk0.text.seg+0x7794c`, `lr=subsdk0.text.seg+0x77810`, fault detail
+`0x1c98` (near-null dereference), caller frame `main.text.seg+0x773edc`, last presented
+frame 887. That address range sits past the `NvMMLite*` symbols, i.e. in the NVIDIA
+decode/OMX glue, so the SDK does not handle a missing NVDEC device at all.
+
+Contrast with 0170b (vendor plugin unregistered, software plugin kept): the guest never
+touched `/dev/nvhost-nvdec`, presented 19 frames further (922), and died in its own
+handle table (`main.text.seg+0x87a9b0`, empty container, negative memmove length).
+Neither run produced a video texture: both end with the same four render textures
+(256x256 msaa, 1024x1024, 2x256x256) and no 1920x1080 video surface.
+
+Conclusions that hold on this evidence: the hardware route cannot be reached without
+emulating NVDEC, and the software-OMX route gets past device access but does not reach a
+presented movie frame. Which of the two is cheaper to finish, and whether the intro movie
+may be omitted at all, is a product decision, not a measurement.

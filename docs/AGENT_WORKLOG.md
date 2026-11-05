@@ -694,3 +694,35 @@ By the consultation's own table this is "the error reached the guest, no progres
 outside the module segments printed in the same dump; the only adjacent guest state is `x13=0x5afe` and
 `x19/x1a = subsdk0.data.seg+0x3eb00/+0x3eb10`. Synthetic fds and ioctl stubs remain NO-GO, so the fault
 is not yet attributed and the next arm needs a fresh decision. Cleanup verified, MainUI back on the panel.
+
+## 0167: Start-skip arm censored by the existing memory guard
+
+Consultation `infernax-0167-inputskip-cf5a262` completed at High/current, GO ID
+`infernax-0167-start-skip-cf5a262`. The chosen experiment was one diagnostic Start (`0x400`)
+500 ms pulse at the first black-to-content present, with a confirmed connected pad/socket.
+The same out166 ELF was retained, with `NX_NVDEC_OPEN_DENY` absent (default OFF), so the only
+experimental variable relative to the original no-deny baseline was the pulse. This is not
+physical-input qualification. The consultation also identified `si_code=-6` as SI_TKILL and
+`x8=0x83` as AArch64 tgkill in the prior fault; the primary fault is not yet attributed.
+
+Harness `run_controller167.py` SHA-256
+`cac46e2bdd7cbf328543bceb4f7bde9f9fdd98110b87019d2ee30966d05784a4` passed five host checks
+(packet exactly once, dead target, rejected path, non-socket, unchanged guards). Config SHA-256
+`58468e3525d357c2fc258508965cdf7c28c44cbfdd1d658bac6b4a63f2df60a2` and controller bytes were
+independently read back on the device. No runtime/launcher/assets were changed.
+
+Arm `arm-cq-167-startskip-1793869215` launched through the validated principal chain, owned runtime
+PID 9870/starttime 132840, expected ELF `258a5359…383cbe86`. The connected physical controller was
+observed, but the 736 MiB RSS guard fired at present 10, before any content transition or pulse:
+VmRSS 757172 KiB (RssAnon 322008, RssFile 433000, RssShmem 2164), VmSwap 387248, MemAvailable 48460,
+SwapFree 1630272. There are zero `HID_DIAGNOSTIC_PRESS` receipts. The Start-skip hypothesis is therefore
+**untested**, not disproved. Limits were not relaxed.
+
+TERM and then SIGKILL were controller cleanup; exit137 is not a guest crash. The attribution child
+was descheduled beyond its 500 ms budget (elapsed10529 ms), so no complete mapping attribution is
+claimed. Cleanup verified no target/wrapper/handoff, original core online states/modes restored,
+and MainUI PID10178/starttime136019. `cleanup-1.png` was copied locally and visually inspected:
+Spruce Recents menu, Infernax selected, not a black frame or game menu.
+
+Next decision: a single unchanged repeat to complete the censored input arm, or offline memory/video
+attribution. Do not invent a negative skip result, raise guards, or add decoder success stubs.

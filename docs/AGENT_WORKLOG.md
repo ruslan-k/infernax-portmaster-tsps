@@ -1128,3 +1128,10 @@ offset 0x22c, 2 words. Words (little-endian) start:
 `0x100..0x140` (surface/output block) and `0x11d..0x12d` (per-surface luma/chroma slot
 addresses) — i.e. decode configuration, not a bitstream. The bitstream itself has to arrive
 either as a second submit or through those address registers pointing at nvmap buffers.
+
+### The run now dies in `vi:m`, not in the decoder
+After the first submit, `0170f-1793904987` stops on
+`UNIMPLEMENTED_IPC_DETAIL endpoint=38 command=4 data=16` — endpoint 38 is `EP_VI_ROOT`
+(`vi:m`). Command 4 is the video-player variant of GetDisplayService; out188 routes it to a
+`vi:u` child session exactly like commands 0/1. Whether the player then issues further
+submits (bitstream + surface addresses) is what the next run has to show.

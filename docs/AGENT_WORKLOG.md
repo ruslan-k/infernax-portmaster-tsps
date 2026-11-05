@@ -1054,3 +1054,22 @@ run `0170f-1793901294` never opened them and instead spun on audout (`endpoint=0
    not `query()` on a possibly-32-bit-truncated value) and decode the register stream.
 3. Implement decode: H.264 via libavcodec into the nvmap surface, then VIC blit; signal
    the syncpoint the SDK waits on (`nvhost-ctrl 0xc004001f` handler still missing).
+
+### nvdec ioctl names resolved (Ryujinx layout, checked against the dumps)
+The numbers are nvhost-channel ioctls, `type` in bits 8..15 and `size` in bits 16..29:
+- `0xc15c0009` = **MapCommandBuffer**, 348-byte arg = header
+  `{int NumEntries; int DataAddress; bool AttachHostChDas; u8 pad; s16 pad}` (12 bytes)
+  followed by `NumEntries` × `{int MapHandle; int MapAddress}`. Our captured dump decodes
+  cleanly: `NumEntries=42`, `DataAddress=0xeaab72fc`, then handles
+  `3,9,4,5,6,7,8,0xa` and a tail of repeated `0x2a/0x2b` (the SDK leaves most of the
+  array untouched) — so the earlier "mystery descriptor" is a mapping table, not commands.
+- `0xc15c000a` = **UnmapCommandBuffer**, same shape.
+- `0xc004001f` (nvhost-ctrl) = **EventRegister** (`CallIoctlMethod<uint>`): it blocks until
+  the channel event fires, which is exactly where the run stops when nothing signals it.
+- `0xc0400001` (64-byte arg, type 0) still unidentified; Ryujinx has no handler either.
+
+Consequence for the port: nvdec here is a channel whose command stream reaches the decoder
+through mapped command buffers + a submit, so the HLE has to (1) record MapCommandBuffer,
+(2) parse the submit's command words (`0x20000000|count<<16|offset` "increment" opcodes to
+`NvdecRegisters`), (3) decode H.264 with libavcodec into the nvmap surface, (4) signal the
+syncpoint the `EventRegister`/wait path is blocked on.

@@ -924,3 +924,33 @@ pkg-config file, so pass `--entrypoint bash`):
       COTM_NXAUDIO_DIR=/checkpoint/out166/provider-build/nxaudio \
       COTM_SHADERS_DIR=/checkpoint/out166/shaders COTM_SDL_INCLUDE_DIR=/usr/include/SDL2 \
       bash /checkpoint/out166/source/native/build.sh /checkpoint/image-regenerated /checkpoint/<out>'
+
+### 0170h/j: nvmap walked to the point where a real allocation is required
+
+Three probe runs with the host idle (the `vampiresurvivor` container had already exited; only our
+VM was left). The nvdec ioctl probe was extended to `/dev/nvmap` (kind 0) so the SDK could walk the
+buffer path.
+
+- `0170f-1793891392` (build `f607a148`): nvmap create `0xc0080101` (in 8 / out 8) and the following
+  `0xc0200104` (in 0x20 / out 0x20) are accepted by the probe, then the run stops on
+  `SetMemoryAttribute` with mask `0x8` -> `UNSUPPORTED_MEMORY_ATTRIBUTE`.
+- `0170f-1793891700` (build `9cb3110a`, mask `0x8` accepted and recorded): stops one call later on
+  `MEMORY_ATTRIBUTE_RANGE address=0x0`.
+- `0170f-1793892032` (build `05687406`, every `svc 3` call logs its four arguments) gives the exact
+  call: `SET_MEMORY_ATTRIBUTE_ARG address=0x0 size=0x8000 mask=0x8 attr=0x8`, then
+  `STOP status=MEMORY_ATTRIBUTE_RANGE`.
+
+`address=0x0` is not an SDK quirk: the probe answers every nvmap ioctl with zeroed output, so the
+create call returns handle/address 0 and the SDK then attributes the 32 KiB buffer at address zero.
+Past the first two ioctls the zeroed answers stop carrying information, i.e. extending the probe
+further is useless — the next step has to be a real nvmap allocator (host memory, guest mapping,
+handle table), followed by the NVDEC submission set.
+
+One new observation from the same run: the movie pipeline does build its texture before the decoder
+open — `NVN_TARGET_FIRST id=3 1920x1080`, `id=4 1920x1080`, plus `1024x32 max=253` and
+`1280x720`. 82 912 log lines, last presented frame 1457, no leftover processes after the stop.
+
+Persistence note: the lab tree `out166/source/native` currently carries three diagnostic edits
+(`mm:u` stub gated on `NX_NVDEC_PROBE`, nvmap in the probe condition, `svc 3` argument logging and
+the mask-0x8 acceptance). They belong to the probe runtime only and must not be carried into a
+shipped patch.

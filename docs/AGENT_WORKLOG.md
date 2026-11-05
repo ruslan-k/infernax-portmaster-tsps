@@ -1135,3 +1135,17 @@ After the first submit, `0170f-1793904987` stops on
 (`vi:m`). Command 4 is the video-player variant of GetDisplayService; out188 routes it to a
 `vi:u` child session exactly like commands 0/1. Whether the player then issues further
 submits (bitstream + surface addresses) is what the next run has to show.
+
+### out190: the media path now runs (7 submits) and stops in rendering instead
+Two stubs unblocked it, both found by reading the call that follows the first submit:
+- `nvdrv` IPC command 4 (the wait that follows `EventRegister`) answered immediately with a
+  synthetic event id, and `EventRegister` (ctrl `0xc004001f`) now returns event id 1 rather
+  than 0.
+With out190 (`76c2620d94d19c9b…`) run `0170f-1793907716` issues **7 channel submits**
+(28 command-buffer chunks, each `cmdbufs=2, syncpt=1, fences=1`), three event waits, no
+unimplemented IPC, and then stops at
+`STOP status=ZERO_SHADER_NOT_PINNED pc=main.text.seg+0x87638c` — i.e. the media stack is no
+longer the blocker; the stop moved into the game's own shader pinning.
+
+Note for whoever picks this up: endpoint 38 in the runtime enum is `EP_NVDRV`, not a VI
+endpoint (my earlier count was off by one because `EP_NONE` occupies 0).

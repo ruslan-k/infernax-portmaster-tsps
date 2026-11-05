@@ -1008,3 +1008,49 @@ Runs on the local host:
 
 Next: the SDK client for `mm:u` lives in `subsdk0` (string xref at `subsdk0+0x774`); reading which reply
 fields it tests is the way to learn the poll's expected answer.
+
+## 2026-11-05 — local lab, media decode is the wall
+
+Lab is fully local on minisforum now (no SSH to AOOSTAR): VM `infernax-qemu-system-0170`
+from the image saved off AOOSTAR, guest reachable at `127.0.0.1:22270`, X + virgl working.
+A derived build image `pmjs-arm64-spruce-local:20261002-gcc10-ff` adds arm64 focal
+`libavcodec 58.54.100 / libavutil 56.31.100 / libswscale 5.5.100`
+(`PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig`). Nothing links it yet.
+
+### Why the intro still blocks everything
+`candidate0170` (software-OMX segments) removes the old `UNIMPLEMENTED_NV_DEVICE` stop on
+`/dev/nvhost-nvdec`: the game passes the mature-content screen (it needs one pad press,
+injected through `uinput_pad.py`'s fifo) and reaches audio init
+(`AUDOUT_HOST_OPEN backend=alsa ... provider=nxaudio-0.4.1`). But the screen stays black
+and audout reports `nonzero-total=0`, i.e. all-silent buffers: the movie is not decoded at
+all. Presentation is not the fault. Mashing A/START/B over the black movie does not skip it.
+
+romfs carries dozens of H.264 clips, not only the intro: `BandageLvl1..5.mp4`,
+`CrossbowLvl1..5.mp4`, `DaggerLvl1..5.mp4`, `ambiant-particles.mp4`, ... So Unity's
+VideoPlayer (NVDEC) is on the path for gameplay effects too; there is no way around a
+decoder, and `megaman_movie.h`'s omission list is the forbidden shortcut.
+
+### nvdec ioctl evidence (probe runs, `NX_NVDEC_PROBE=1`)
+Open order: `/dev/nvhost-nvdec` then `/dev/nvhost-vic`. First submissions:
+`0xc15c0009` (in/out `0x15c`), `0xc0400001` (in/out `0x40`), `0xc15c000a` (in/out `0x15c`).
+First `0xc15c0009` descriptor, u32 words:
+`2a | eaab72fc 00000000 | 3 | 0 9 | 0 4 | 0 5 | 0 6 | 0 7 | 0 8 | 0 a |`
+then alternating `0x2a,0x2b` pairs to offset `0x15c`. Not yet decoded: the `0xeaab72fc`
+slot is pointer-like but `query()` did not confirm a mapped region, and the trailing
+`2a/2b` pattern looks like a filled table rather than commands. Ryujinx models nvdec as a
+Host1x register device (command buffer writes `NvdecRegisters`, `Execute` triggers decode),
+which is the model to copy: parse the descriptor -> walk the command buffer -> decode.
+
+### Run-to-run variance
+Same binary, same arm: run `0170f-1793900534` opened nvdec/vic and reached the submits;
+run `0170f-1793901294` never opened them and instead spun on audout (`endpoint=0x3f`,
+`command=0x7/0x8`, 56k calls) with a black screen. Pad press timing is the difference
+(160 s vs 150 s), so the harness must press deterministically (repeat every 10 s from
+120 s) before comparing runs.
+
+### Next
+1. Deterministic pad input in `guest-run.py`, so every probe run reaches the submit.
+2. Dump the descriptor's pointee correctly (validate via the runtime's own region table,
+   not `query()` on a possibly-32-bit-truncated value) and decode the register stream.
+3. Implement decode: H.264 via libavcodec into the nvmap surface, then VIC blit; signal
+   the syncpoint the SDK waits on (`nvhost-ctrl 0xc004001f` handler still missing).

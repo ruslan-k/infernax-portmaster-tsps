@@ -1149,3 +1149,10 @@ longer the blocker; the stop moved into the game's own shader pinning.
 
 Note for whoever picks this up: endpoint 38 in the runtime enum is `EP_NVDRV`, not a VI
 endpoint (my earlier count was off by one because `EP_NONE` occupies 0).
+
+### Do not blanket-acknowledge unknown nvdrv commands
+out191 turned the unhandled tail of `nv_dispatch` into "log and succeed" (and treated command
+2 as Close). Run `0170f-1793909781` then never reached a single submit: the SDK reports
+`STOP status=NV_NOT_INITIALIZED` and the run dies at `CPU_FAULT pc=<base>+0x1c6cc`, the same
+fault offset seen in `0170f-1793908607`. Command 2 is not Close on this SDK. out192 reverts
+to logging only and keeps the out190 behaviour (which produced 7 submits).

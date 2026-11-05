@@ -1093,3 +1093,15 @@ Next implementation slice (no more probing until it exists): MapCommandBuffer st
 `SubmitArguments` parser that logs command words (`0x2xxxxxxx` increment opcodes to
 `NvdecRegisters`), `EventRegister` returning a real event id, then libavcodec H.264 into
 the mapped nvmap surface.
+
+### Submit identified: `0xc0400001` on the nvdec channel
+Sequence on `/dev/nvhost-nvdec` in run `0170f-1793900534`: `0x40044801` (SetNvMapFd),
+`0x40040007`, `0xc0080002`, `MapCommandBuffer`, **`0xc0400001`**, `UnmapCommandBuffer`,
+then nvhost-ctrl `0xc004001f`.
+
+The 64-byte argument decodes exactly as Ryujinx's `SubmitArguments`:
+`CmdBufsCount=2, RelocsCount=0, SyncptIncrsCount=1, FencesCount=1` followed by two
+`{mem=1, offset, words}` entries (`offset=0, words=139` and `offset=0x22c, words=2`),
+one `SyncptIncr{id=0, incrs=1}`, one fence word — 16 + 24 + 20 + 4 = 64 bytes. The `mem`
+field is the nvmap handle, so the command words live in the guest buffer that
+`NVMAP_ALLOC` already resolved. That is the register stream the decoder has to execute.

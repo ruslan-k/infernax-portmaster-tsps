@@ -757,3 +757,24 @@ as Nvidia decoding. This establishes an implementation candidate only; it does
 not prove software codec selection avoids nvdec initialization or that its
 output/presentation works. No codec switch or fabricated NV device success has
 been installed.
+
+### 0169 preparation: correct the observer-control source description
+
+Consultation `infernax-0169-observer-memory-a9742b9` (visible High/current)
+returned GO for one controller-only observer A/B, fixed guards and no codec
+changes. **Source correction before any device launch:** the supplied prompt
+misdescribed the timer variable as `early_shot`; actual controller167 instead
+has `sigs=0` and `if first_ready and sigs<3 and now-first_ready>=sigs*8` followed
+by `send(owned,SIGUSR1,True); sigs+=1`. Both completed arms sent exactly two
+signals before their guard; a third could have been sent later. No `early_shot`
+variable exists. First-content captures are independent KMS captures, not this
+timer. Thus a review correction is required before launch, not a guessed patch.
+
+Prepared controller169 changes **only `sigs=0` to `sigs=3`**, disabling the whole
+timed SIGUSR1 observer and retaining byte-identical Start/KMS/guard/ownership/
+cleanup code. SHA-256 `e68ef7428a5b74329e7e7bdee158e222e2fbbd6fd21aefd54de8c5736585a6bd`.
+Seven host unittest checks pass (existing pulse/path/identity/guard checks plus
+exact one-edit equivalence and evaluation of the actual AST condition at timer
+boundaries); py_compile passes. This is harness validation, not device progress.
+Config arm-cs retains all hashes/environment/guards except its run/output IDs.
+No physical arm169 has started at this checkpoint.

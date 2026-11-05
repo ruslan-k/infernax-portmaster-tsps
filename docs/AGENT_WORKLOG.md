@@ -954,3 +954,30 @@ Persistence note: the lab tree `out166/source/native` currently carries three di
 (`mm:u` stub gated on `NX_NVDEC_PROBE`, nvmap in the probe condition, `svc 3` argument logging and
 the mask-0x8 acceptance). They belong to the probe runtime only and must not be carried into a
 shipped patch.
+
+### 0170k/n: nvmap implemented, VIC discovered, table too small
+
+User decision: the intro stays, nothing is cut, so the hardware route is taken. The probe stopped being
+useful past the first nvmap call, so `/dev/nvmap` got a real (if minimal) implementation:
+
+- `create` `0xc0080101` takes `{u32 size, u32 flags}` and returns the handle **at offset 4** — writing
+  it at offset 0 was why the SDK kept allocating handle 0 and the runtime reported
+  `INVALID_NVMAP_HANDLE`. Confirmed by dumping the payloads (`size=0x8000`, then `0x4000`, `0x1000`).
+- `alloc` `0xc0200104` is `{handle, heapmask, flags, align, kind[8], u64 addr}`; the SDK supplies the
+  guest address it already reserved, so the runtime validates the range with `query()` and registers
+  it — nothing is copied and no page is invented.
+- `SetMemoryAttribute` mask `0x8` now lands on a real range (`address=0x3ee67b000 size=0x1000 attr=0x8`)
+  instead of address zero, which was purely the zeroed-create artifact.
+
+Run `0170f-1793893765` then reached a new device: `NV_OPEN path=/dev/nvhost-vic` ->
+`UNIMPLEMENTED_NV_DEVICE`. VIC (video image compositor) is the copy/convert stage after decode, so it
+was added to `nv_paths` as kind 6 and handed out by the same probe.
+
+Run `0170f-1793894857` (host quiet, load 1.3) opened VIC, allocated handles 1..0x10 and then stopped on
+my own 16-entry table: `NVMAP_TABLE_FULL`. Table raised to 64, build `f033cd97` deployed as the probe
+runtime.
+
+The whole 7-minute run, and several before it, were killed by an external SSH-driven agent on AOOSTAR
+that runs `podman rm -f $(podman ps -aq)` and then launches its own `vampiresurvivor` container; that
+command deletes the Infernax VM mid-run. Killing the process brings it back from the same session.
+The lab needs that session stopped before long runs are meaningful.

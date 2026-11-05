@@ -3,6 +3,7 @@
 import hashlib
 import json
 from pathlib import Path
+import shutil
 import struct
 import sys
 
@@ -42,7 +43,7 @@ if __name__ == '__main__':
     destination.mkdir(mode=0o700, exist_ok=False)
     for name in names:
         if name != 'subsdk0.text.seg':
-            (destination / name).symlink_to(Path('..') / 'baseline' / name)
+            shutil.copyfile(source / name, destination / name)
     (destination / 'subsdk0.text.seg').write_bytes(candidate)
     actual = (destination / 'subsdk0.text.seg').read_bytes()
     assert actual == candidate

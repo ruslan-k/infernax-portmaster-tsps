@@ -817,3 +817,42 @@ compiled-in software-codec functions. Skipping only Nvidia plugin registration
 could avoid hardware initialization while retaining actual software AVC decode,
 but has not been implemented or tested. No synthetic nvdec fd/ioctl success,
 quality reduction, movie removal or VM-success claim is authorized by this finding.
+
+### 0170b result: software-OMX arm passes nvdec open, then faults in game code
+
+The isolated candidate (`subsdk0.text.seg` SHA256 `2ff853a8...d579366`, exactly
+one instruction at `0x272c34` changed from `bl 0x3315d0` to `b 0x272c4c`) was run
+in the same VM, harness, environment and guards as the qualified baseline. Source
+was `/mnt/host/candidate0170` (recorded in `events.jsonl`), the runtime ELF was
+unchanged, and the run lasted 220.6 s ending with exit -11.
+
+What changed: the guest never opened `/dev/nvhost-nvdec`. The baseline stopped at
+`NV_OPEN path=/dev/nvhost-nvdec` -> `UNIMPLEMENTED_NV_DEVICE` after frame 903;
+the candidate kept presenting and reached frame 922 before faulting.
+
+What faulted: `SIGSEGV` (code 1, MAPERR) at `sdk.text.seg+0x5892b0`, inside
+`memcpy` (`0x589198`, size 680), entered through `memmove` (`0x5894e0`); the saved
+return address is `sdk.text.seg+0x589564`. Registers at fault: `x0=0x3e7f609f8`,
+`x1=0x3e8400000`, `x2=0xffffffffffb609f8`. The caller frame in the game is
+`main.text.seg+0x87a9b0`, i.e. `sub x2, x8, x1` where `x8 = data + count*8` and
+`x1 = data + 8`, taken on the path where `[x19 #304]` (container size) is zero, so
+`x2` becomes `-8` and later `-0x49f608`. The negative length is used as an unsigned
+size, and `memmove` copies forward until it leaves the heap arena at `0x3e8400000`.
+
+This is a container erase/pop on an empty container in game code, not a decoder
+output-buffer overrun: no decoded frame, no codec callback and no video receipt
+exists in the log. `x19`-relative fields (`288` data, `304` size, `312` capacity,
+`384` hash buckets, `276`, `372`) belong to a handle/hash table, not to a frame
+queue, so the crash is downstream of an earlier failed bookkeeping step whose
+cause is not yet established.
+
+Registry status: the disassembly of `OMXMaster::OMXMaster` (`0x272b9c`) shows the
+patch skips only the vendor-plugin branch — `w0=0x40; bl 0x3315d0` (allocate),
+`bl 0x33ad30` (construct), `bl 0x33ad40` (addPlugin) — and lands on the second
+branch `w0=8; bl 0x3315d0; bl 0x33ad50; b 0x33ad40`, which registers the software
+plugin. So software OMX registration is preserved by construction, but the runtime
+logs no OMX/ACodec activity, so **selection and successful creation of a software
+AVC decoder remain unproven**; R1 has no receipt yet.
+
+No synthetic nvdec success, no movie removal, no quality reduction, no guard
+change and no device deployment accompanied this run.

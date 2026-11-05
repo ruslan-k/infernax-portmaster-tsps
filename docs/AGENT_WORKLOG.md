@@ -981,3 +981,30 @@ The whole 7-minute run, and several before it, were killed by an external SSH-dr
 that runs `podman rm -f $(podman ps -aq)` and then launches its own `vampiresurvivor` container; that
 command deletes the Infernax VM mid-run. Killing the process brings it back from the same session.
 The lab needs that session stopped before long runs are meaningful.
+
+### Lab moved to the Hermes host (minisforum)
+
+AOOSTAR kept losing the VM: another SSH-driven agent there runs `podman rm -f $(podman ps -aq)` and
+relaunches its own `vampiresurvivor` container, which deletes the Infernax VM mid-run. The lab now runs
+where Hermes runs:
+
+- `podman load` of the AOOSTAR image (790 MB) is required — a locally built `debian:bookworm` with
+  `qemu-system-arm` lacks the `virtio-gpu-gl-device` object type and dies with
+  `missing object type 'virtio-gpu-gl-device'`, even with `libvirglrenderer1` installed.
+- Same `start-vm.sh`, same `vm.qcow2` copy (5.4 GB) under `/var/home/ruslan/.cache/infernax-qemu`,
+  guest reachable on `127.0.0.1:22270` with no SSH jump.
+- Guest GL: `virgl (AMD Radeon Graphics (rembrandt), Mesa 22.3.6)`, 8 vCPU, boot ~90 s.
+
+Runs on the local host:
+
+- `0170f-1793896042` (build `f033cd97`, handle table 64): VIC opened; the SDK issued real decoder
+  ioctls `0xc15c0009`, `0xc0400001`, `0xc15c000a`; then stop on nvhost-ctrl `0xc004001f`, which the
+  probe did not cover.
+- `0170f-1793896562` (build `d0e95fce`, probe extended to nvhost-ctrl): instead of reaching the
+  decoder it spins on `mm:u` command 0x8 — 35 915 calls of command 0x8 and 22 487 of 0x7, endpoint 0x3f,
+  while frames keep advancing (frame 1301). The stub replies success with zeroed payload, which the
+  SDK treats as "not ready yet". Same binary family passed this poll in the previous run, so the loop
+  is timing/state dependent.
+
+Next: the SDK client for `mm:u` lives in `subsdk0` (string xref at `subsdk0+0x774`); reading which reply
+fields it tests is the way to learn the poll's expected answer.

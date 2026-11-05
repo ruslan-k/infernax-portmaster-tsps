@@ -1105,3 +1105,26 @@ The 64-byte argument decodes exactly as Ryujinx's `SubmitArguments`:
 one `SyncptIncr{id=0, incrs=1}`, one fence word — 16 + 24 + 20 + 4 = 64 bytes. The `mem`
 field is the nvmap handle, so the command words live in the guest buffer that
 `NVMAP_ALLOC` already resolved. That is the register stream the decoder has to execute.
+
+### First command stream captured (out187)
+Bug found on the way: these ioctls pass the *same* guest buffer as input and output, and the
+probe zeroed outputs first, which wiped the argument before parsing. With the zeroing moved
+to the end, run `0170f-1793904987` produced the decoder stream (evidence:
+`docs/evidence/nvdec-cmdbuf-0170f-1793904987.txt`).
+
+Submit: `cmdbufs=2`, entry 0 = nvmap handle 1, offset 0, 139 words; entry 1 = same handle,
+offset 0x22c, 2 words. Words (little-endian) start:
+
+```
+00003c00 10100002 00000080 00000003 10100002 00000100 00000053 10100002
+00000101 00000000 10100002 00000140 00000000 10100002 00000102 00000000
+...
+00000128 00000000 10100002 00000118 00000000 10100002 00000129 00000000
+10100002 000000c0 00000100 00000000
+```
+
+`0x10100002` repeats as a constant 3-word record marker: increment-method opcode, one
+49-bit register write, followed by `{register index, value}`. Register indices cluster in
+`0x100..0x140` (surface/output block) and `0x11d..0x12d` (per-surface luma/chroma slot
+addresses) — i.e. decode configuration, not a bitstream. The bitstream itself has to arrive
+either as a second submit or through those address registers pointing at nvmap buffers.

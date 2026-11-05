@@ -1,0 +1,5 @@
+FROM docker.io/library/debian:bookworm-slim
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    qemu-system-arm qemu-system-gui qemu-utils qemu-efi-aarch64 \
+    genisoimage curl ca-certificates openssh-client procps mesa-utils \
+    && rm -rf /var/lib/apt/lists/*

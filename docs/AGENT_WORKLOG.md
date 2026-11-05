@@ -777,4 +777,43 @@ Seven host unittest checks pass (existing pulse/path/identity/guard checks plus
 exact one-edit equivalence and evaluation of the actual AST condition at timer
 boundaries); py_compile passes. This is harness validation, not device progress.
 Config arm-cs retains all hashes/environment/guards except its run/output IDs.
-No physical arm169 has started at this checkpoint.
+No physical arm169 had started at that preparation checkpoint.
+
+### 0169 result: content and Start receipt; original nvdec stop remains
+
+The corrected controller was subsequently run on TSPS with unchanged out166 ELF,
+environment and resource limits. Timed SIGUSR1 requests were disabled. Maximum
+sampled RSS was **749720 KiB**, minimum MemAvailable **45460 KiB**; no resource
+guard fired. First content was reported at present234. Real 1280x720 KMS captures
+show the mature-content warning and then **The Arcade Crew** publisher logo,
+not a game menu. A single diagnostic Start (`0x400`, 500 ms) was received at
+present246. This qualifies neither physical input nor successful intro skipping.
+
+At present418 the guest opened `/dev/nvhost-ctrl` then `/dev/nvhost-nvdec`, followed
+by `STOP status=UNIMPLEMENTED_NV_DEVICE`, `exit=20`; controller DONE frame419.
+The observer-only change allowed this arm past the two censored runs, but does
+not establish memory causality or a durable memory fix. Cleanup records no game,
+wrapper or pending handoff, restores original core states, and records MainUI
+PID15248. Independently inspected `cleanup-1.png` shows Spruce **Recents**, not
+Infernax's menu. Runtime, launcher, owner content and saves were not replaced.
+Local primary evidence: repair workspace `run169-controller.jsonl` and
+`arm-cs-169-no-early-capture-1793871606/{final-log.txt,pre-start.png,post-start-1.png,cleanup-1.png}`.
+
+## 0170 preparation: user-directed QEMU System ARM64 first
+
+The user redirected intermediate tests to a full ARM64 VM, optionally on AOOSTAR;
+reach a real game menu there before deploying and testing on TSPS. TSPS remains
+unchanged. `ruslan-k/PM-Porting-Tools` main at
+`f41854f08121823020e603325f01ddfff8509048` was inspected, including implemented
+native-testing scripts and `docs/testing-and-debugging.md`. It documents
+**qemu-user + Xvfb**, not qemu-system ARM64; its capture/comparison conventions
+are reusable, but it does not supply a full VM. qemu-user's input ioctl limitation
+is explicitly documented, reinforcing the choice of a full VM for this runtime.
+
+Read-only offline disassembly identified a candidate, not an installed fix:
+`OMXMaster::OMXMaster` constructs/registers NVOMXPlugin before SoftOMXPlugin;
+NVOMXPlugin's constructor calls `OMX_Init`. SoftOMXPlugin's factory dispatches to
+compiled-in software-codec functions. Skipping only Nvidia plugin registration
+could avoid hardware initialization while retaining actual software AVC decode,
+but has not been implemented or tested. No synthetic nvdec fd/ioctl success,
+quality reduction, movie removal or VM-success claim is authorized by this finding.

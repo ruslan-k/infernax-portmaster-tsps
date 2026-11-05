@@ -881,3 +881,46 @@ Conclusions that hold on this evidence: the hardware route cannot be reached wit
 emulating NVDEC, and the software-OMX route gets past device access but does not reach a
 presented movie frame. Which of the two is cheaper to finish, and whether the intro movie
 may be omitted at all, is a product decision, not a measurement.
+
+### 0170f/g: the movie path is blocked on nvmap, not on nvdec open
+
+Two VM runs with the probe runtime (`NX_NVDEC_PROBE=1`, source `/mnt/host/probe-nvdec`, tag
+`0170f`). The first (`0170f-1793889476`) produced an empty `game.log` only because no X was
+running; after `start-x.sh` the run (`0170f-1793889655`, 33 052 lines, last frame 396) reached
+the decoder.
+
+With the probe answering the nvdec open, the SDK proceeds past the previous fault and asks for a
+service the runtime did not know: `GET_SERVICE name=mm:u` -> `STOP status=UNIMPLEMENTED_SERVICE
+pc=sdk.text.seg+0x158b20 detail=0x1`. The name string lives in `subsdk0.rodata` at vaddr
+`0x49e0a0`, directly after `multimedia.nss`; the game's NPDM already lists `mm:u`, and it is an
+undocumented service that the album/photoViewer titles also hold. The runtime was therefore given
+one diagnostic mapping: `mm:u` -> the existing `EP_AW_STUB` (logs `command`/`data`, answers
+success), gated on the same `NX_NVDEC_PROBE` env so the shipped path is unchanged. Build
+`a6b21ecb…` is deployed as the probe runtime; the run itself used the ungated precursor
+`5bd5a7da…`, which behaves identically because that arm always sets the env.
+
+Result of run `0170f-1793890837` (53 213 lines, last frame 900; the host was simultaneously
+running `vampiresurvivor`, so the guest was slow but functional): the stub is accepted and the SDK
+talks to it — `AW_STUB_SERVICE command=0x6 data=0x14` and `command=0x7 data=0xc`, interleaved with
+`command=0x8 data=0x8`, never rejected. The movie path then opens `/dev/nvhost-nvdec` again
+(fd 4), reissues `0x40044801` and the new `0x40040007`, and dies on its first nvmap allocation:
+
+    NV_IOCTL path=/dev/nvmap code=0xc0080101 inputs=0x1 outputs=0x1
+    STOP status=UNIMPLEMENTED_NV_IOCTL detail=0xc0080101
+
+So the frontier has moved twice: the decoder is no longer refused, `mm:u` is no longer a wall, and
+what stops the port is the absence of nvmap handle allocation — i.e. the SDK drives the raw
+NVIDIA stack itself. Finishing the hardware route now means emulating nvmap plus the NVDEC ioctl
+set (buffers, submission, output surfaces), which is the long option, not a missing-service fix.
+
+Build recipe used for both probe runtimes (must run inside the pinned container, and the owner
+image directory is `image-regenerated/`, not `out166/`, or `image_table.h` /
+`megaman_graphics_contract.h` are missing; the image entrypoint fails on a missing `libavformat`
+pkg-config file, so pass `--entrypoint bash`):
+
+    docker run --rm --entrypoint bash -v <repair>:/checkpoint -v <repo>:/recipe \
+      pmjs-arm64-spruce-local:20261002-gcc10 -c 'COTM_CC=/recipe/tools/cc-infernax.sh \
+      COTM_NXINPUT_DIR=/checkpoint/out166/source/framework/nxinput \
+      COTM_NXAUDIO_DIR=/checkpoint/out166/provider-build/nxaudio \
+      COTM_SHADERS_DIR=/checkpoint/out166/shaders COTM_SDL_INCLUDE_DIR=/usr/include/SDL2 \
+      bash /checkpoint/out166/source/native/build.sh /checkpoint/image-regenerated /checkpoint/<out>'

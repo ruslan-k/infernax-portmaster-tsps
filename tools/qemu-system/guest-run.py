@@ -27,10 +27,14 @@ tag = sys.argv[2]
 # synthetic success); every other arm keeps the default environment.
 arm = sys.argv[3] if len(sys.argv) > 3 else ''
 assert arm in ('', 'nvdec-deny'), arm
-assert source.parent == Path('/mnt/host') and source.name in ('baseline', 'candidate0170')
-assert re.fullmatch(r'0170[abc]', tag), tag
+assert source.parent == Path('/mnt/host') and source.name in ('baseline', 'candidate0170', 'probe-nvdec')
+assert re.fullmatch(r'0170[a-f]', tag), tag
 runtime = Path('/mnt/host/baseline/infernax-nextos')
-assert hashlib.sha256(runtime.read_bytes()).hexdigest() == '258a53591bdb77d7a41a92be2a7453fb4e4b8ee1282754a5aa5607fa383cbe86'
+baseline_sha = '258a53591bdb77d7a41a92be2a7453fb4e4b8ee1282754a5aa5607fa383cbe86'
+expected_runtime = {'baseline': baseline_sha, 'candidate0170': baseline_sha,
+                    'probe-nvdec': '4ab4e940ea96de20d959df676dfd313a1aa23aa78b18cec09d0f035f8e32a080'}[source.name]
+assert hashlib.sha256(runtime.read_bytes()).hexdigest() == baseline_sha
+assert hashlib.sha256((source / 'infernax-nextos').read_bytes()).hexdigest() == expected_runtime
 runid = str(int(time.time()))
 work = Path('/opt/infernax-runs') / (tag + '-' + runid)
 work.mkdir(mode=0o700, parents=True, exist_ok=False)
@@ -84,7 +88,7 @@ try:
         time.sleep(0.1)
     assert (work / 'pad.fifo').is_fifo(), 'uinput pad not ready'
     capture('desktop-before')
-    game = subprocess.Popen([str(runtime)], cwd=work, env=env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+    game = subprocess.Popen([str(source / 'infernax-nextos')], cwd=work, env=env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
     event('BEGIN', pid=game.pid, source=str(source), work=str(work), runid=runid,
           limit_seconds=900, scope='VM-only; not TSPS memory/performance', environment={k:v for k,v in env.items() if k.startswith(('NX_', 'COTM_', 'T2_', 'SDL_', 'MEGAMAN_'))})
     reader = (evidence / 'game.log').open('r', errors='replace')

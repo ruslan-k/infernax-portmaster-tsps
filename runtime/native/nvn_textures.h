@@ -343,7 +343,6 @@ static struct nvn_texture *momo_texture_alias(uint64_t object,unsigned *index_ou
     return NULL;
 }
 #endif
-#if ZERO_ZX_GAME
 static uint64_t zero_texture_record_id(uint64_t object) {return nvn_texture_find(object)->id;}
 static void aw_clear_texture_admit(uint64_t object,uint64_t view,const int32_t *region) {
     struct nvn_texture *t=nvn_texture_find(object);
@@ -351,6 +350,7 @@ static void aw_clear_texture_admit(uint64_t object,uint64_t view,const int32_t *
     if(region[0]<0||region[1]<0||region[2]||region[3]<=0||region[4]<=0||region[5]!=1||
        (uint64_t)region[0]+region[3]>t->b.width||(uint64_t)region[1]+region[4]>t->b.height)stop("NVN_CLEAR_TEXTURE_REGION",nvn_caller,object,20);
 }
+#if ZERO_ZX_GAME
 static void zero_record_target_view(uint64_t object,const uint8_t *view,unsigned attachment) {
     struct nvn_texture *t=object?nvn_texture_find(object):NULL;
 #ifdef MOMO_SHADERS

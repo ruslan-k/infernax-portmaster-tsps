@@ -1240,3 +1240,21 @@ chroma `0x11D..0x12E`, codec `0x80`, execute `0xC0`. Offsets cross-checked again
   NVD_TEXUPLOAD only 7..11, process dies around frame 26 with an SVC/IPC pair from `sdk.text.seg+0x158af0`.
 - Every `NVD_DEC` line reports the same `alen=0x1af` (431 bytes) for 1920x1080 - the size heuristic
   is clamped, which is why the decoder cannot produce a real picture. This is what the method parser replaces.
+
+### 2026-11-07 (late) runtime results on the guest
+- `ZERO_ZX_GAME` must be **1**: with 0 the shim stops at `NVN_RENDER_TARGET_VIEWS_REQUIRED`
+  (pc=main.text.seg+0x838b74); with 1 the tree compiles once the two guard bugs are fixed
+  (`zero_texture_record_id` and `aw_clear_texture_admit` were declared inside `#if ZERO_ZX_GAME`
+  but called unconditionally - both moved out of the guard).
+- Cross builds must target glibc <= 2.36 (guest is Debian 12). A Fedora-43 cross link produced
+  `GLIBC_2.38` and the guest refused to start; `build-arm64` (debian:bookworm under qemu-aarch64)
+  produces `GLIBC_2.34` and runs. Build inside the container's own filesystem, not a bind mount:
+  `cp -a` on the composefs host mount hangs.
+- Fresh builds still stop early (`NVN_PROGRAM_INVALID` at main.text.seg+0x8356fc with ZERO=1), so the
+  only runtime that renders is the earlier binary `6a9ca55e...`; the source tree has drifted from it.
+- With that binary the game reaches the title screen at ~frame 1000 (~190 s, 1280x720 frame:
+  "INFERNAX / PRESS ENTER TO START / 1.05.01T / THE ARCADE CREW / BERZERK STUDIO 2022-2023").
+- START enters the intro movie: `NVD_AUH len=0xa35`, NVD_DEC/NVD_BLIT per frame, and
+  `NVD_TEXUPLOAD id=132 format=0x25 1280x720` every ~2 frames. The quad shows the title art
+  **inverted** (white background, dark logo) - the NV12 -> RGB upload/format path is wrong,
+  not the decode. ~90 s later the game returns to the title screen.

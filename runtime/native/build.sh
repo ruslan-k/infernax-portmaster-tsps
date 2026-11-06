@@ -67,7 +67,7 @@ done
     "$COTM_NXCOMPAT_DIR/src/nxcompat_sdl_optional.c" \
     "$COTM_NXCOMPAT_DIR/src/nxcompat_video.c" \
     "$nxinput_obj_dir"/*.o "$COTM_NXAUDIO_DIR/libnxaudio.a" \
-    -Wl,--gc-sections -Wl,--sysroot=/usr/aarch64-redhat-linux/sys-root/fc43 -Wl,-rpath-link,/usr/aarch64-redhat-linux/sys-root/fc43/usr/lib64 -lSDL2 -lEGL -lGLESv2 -lm -lz -ldl -o "$2/terminator2d-nextos"
+    -Wl,--gc-sections ${COTM_SYSROOT:+-Wl,--sysroot=$COTM_SYSROOT} ${COTM_SYSROOT:+-Wl,-rpath-link,$COTM_SYSROOT/usr/lib64} -lSDL2 -lEGL -lGLESv2 -lm -lz -ldl -o "$2/terminator2d-nextos"
 if [[ -n "${COTM_SHADERS_DIR:-}" ]]; then
     python3 "$here/sanitize_shader_diagnostics.py" "$2/terminator2d-nextos" --in-place
 fi

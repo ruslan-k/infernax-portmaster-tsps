@@ -8,8 +8,8 @@
 #include "zero_render_target_view.h"
 #if ZERO_ZX_GAME
 static void zero_record_target_view(uint64_t object,const uint8_t *view,unsigned attachment);
-static uint64_t zero_texture_record_id(uint64_t object);
 #endif
+static uint64_t zero_texture_record_id(uint64_t object);
 #define NVN_COMMAND_ALIGNMENT 16U
 #define NVN_CONTROL_ALIGNMENT 16U
 /* `limit` = bytes the recorder may fill (= size unless T2_COMMAND_ARENA_CAP_BYTES caps it on the bench). */

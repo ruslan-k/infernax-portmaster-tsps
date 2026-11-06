@@ -1181,3 +1181,12 @@ Next: SPS/PPS synthesis (yuzu H264::ComposeFrame algorithm, consult archived at
 /tmp/gpt-nvdec3.log) + libavcodec decode into the NV12 surface. Toolchain image
 `pmjs-arm64-spruce-local:20261002-gcc10` has no libavcodec, so a static ffmpeg
 build (or a minimal H.264 decoder) has to be vendored first.
+
+## 2026-11-06 — NVDEC: real slice captured, SPS/PPS still unknown (QEMU 0170f)
+
+- Added `NV_HEXD` (dump of handle 3 at 0x300 and handle 4 at 0x2000) triggered on the first Annex-B hit; build out204 `d47a0c26…`.
+- First run with it: `0170f-1793928793` — `sub=7`, `es=14`, handle 4 @0 starts `00 00 01 65` (IDR slice), first NAL payload is 447 bytes.
+- Handle 3 at ES time is all zeros → the 0x2FC picture-info is not at that base in this build, so no SPS fields are readable from it.
+- Offline SPS/PPS synthesis (bit-writer per ITU-T H.264, 1920x1088 = 120x68 MB, 4:2:0) brute-forced 36 parameter combos against ffmpeg: `cabac=1, log2_max_frame_num_minus4=1, poc=2` is the only family that parses the slice header without an error line, but decoding still conceals 8160/8160 MBs → parameters are still wrong, not merely incomplete.
+- Also fixed: the `NV_BUF`/`NV_HEXD` dump helper prints BYTES, not words; all earlier "word" tables were byte tables (content interpretation unchanged, offsets unchanged).
+- Next: identify the intro MP4 through the fs/mmp read trace (the file lives inside a Unity bundle in romfs; no `ftyp`/`.mp4` string exists at the romfs top level), extract it locally, and take SPS/PPS verbatim from its avcC instead of guessing.

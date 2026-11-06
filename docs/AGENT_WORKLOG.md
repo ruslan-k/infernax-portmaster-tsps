@@ -1213,3 +1213,30 @@ build (or a minimal H.264 decoder) has to be vendored first.
 - Run `0170f-1793941452`: `sub=6`, `dec=129`, `NVD_BLIT nv12=0xef942000` 129 times (one per access unit), `frame=2494`. Decode and blit are 1:1 with the submitted access units.
 - Screen during the movie stays at mean ≈0.04 (216 colours) — i.e. black; after the movie the game returns to the title (press Start+A again re-enters the same black movie sequence with the same 129 frames). So the game consumes the movie timeline but never samples our buffer.
 - Conclusion: the pixels land in a buffer the video quad does not read. Next probe must come from the submit stream itself (the NVDEC picture-info/output-surface field), not from guessing buffer sizes.
+
+## 2026-11-07 cross-build repaired, NVDEC method-stream parser, three-way movie evidence
+
+### Build environment (Fedora 43 container `build`)
+The cross compiler's real sysroot is `/usr/aarch64-redhat-linux/sys-root/fc43`, not
+`/usr/aarch64-linux-gnu/sys-root` (that one only carried headers). `native/build.sh` now links with
+`-Wl,--sysroot=/usr/aarch64-redhat-linux/sys-root/fc43`, and the sysroot needs:
+`libSDL2.so` from `sdl2-compat`, `libEGL.so`/`libGLESv2.so` from `libglvnd`+`mesa-libEGL`,
+`libz.so` from `zlib-ng-compat`, plus a `lib64 -> usr/lib64` symlink inside the sysroot.
+`-DZERO_ZX_GAME=1` is mandatory: the adapter patch guards `zero_texture_record_id` behind that macro
+but uses it unconditionally in `nvn_commands.h`. `-Wno-error` is required because the shader stub
+raises `-Warray-bounds`/`-Wmisleading-indentation` diagnostics that are not real faults.
+
+### Decoder
+`nvdrv.h` grew a method-stream parser for the nvdec channel (`NVD_REG=1`): decode header
+(`value&0xffff`, `(value>>16)&0xfff` method, `value>>28` mode), pic-info `0x101`
+(STREAM_LEN +0x48, width +0x64, height +0x68, pitch +0x8C), bitstream `0x102`, luma `0x10C..0x11D`,
+chroma `0x11D..0x12E`, codec `0x80`, execute `0xC0`. Offsets cross-checked against ScarletNX
+`nvdec_regs.h` and Eden's `nvhost_nvdec_common`. It logs `NVD_REG`, `NVD_AUH len=`, `NVD_AUSKIP dup=`.
+
+### Evidence collected this session
+- `0170f-1794001894` (NX_PRESENT_CLEAR=1): 1318 presented frames, real title screen on X root,
+  and *zero* nvdec traffic in the whole log.
+- `0170f-1794000917` / `1793998891` (no clear): movie path runs, NVD_DEC=118..134, NVD_BLIT=118..134,
+  NVD_TEXUPLOAD only 7..11, process dies around frame 26 with an SVC/IPC pair from `sdk.text.seg+0x158af0`.
+- Every `NVD_DEC` line reports the same `alen=0x1af` (431 bytes) for 1920x1080 - the size heuristic
+  is clamped, which is why the decoder cannot produce a real picture. This is what the method parser replaces.

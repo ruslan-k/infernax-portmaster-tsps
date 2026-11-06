@@ -1,0 +1,10 @@
+{
+  "repository": "https://github.com/iOrange/bcdec",
+  "commit": "80859ed3b7afb1c527a2a99d70c61457bea72d0c",
+  "files": {
+    "bcdec.h": "134520764d96f70a27db814173616c89ad85db95fbd3328417c7a8c77e7ca189",
+    "LICENSE": "2414c782587f6e96661cb0d19d752432ddecfcc1a221b4cb12bc2253a54dc5ac"
+  },
+  "license_choice": "MIT",
+  "source_unchanged": true
+}

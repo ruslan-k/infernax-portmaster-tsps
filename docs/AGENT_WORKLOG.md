@@ -1156,3 +1156,28 @@ out191 turned the unhandled tail of `nv_dispatch` into "log and succeed" (and tr
 `STOP status=NV_NOT_INITIALIZED` and the run dies at `CPU_FAULT pc=<base>+0x1c6cc`, the same
 fault offset seen in `0170f-1793908607`. Command 2 is not Close on this SDK. out192 reverts
 to logging only and keeps the out190 behaviour (which produced 7 submits).
+
+## 2026-11-06 — NVDEC: bitstream + picture-info located (QEMU 0170f)
+
+Probes out196..out201 (lab-gated, shipped path untouched) plus a chatgpt-use consult.
+
+Findings, all from live QEMU runs (evidence `0170f-1793925683`):
+
+- Bitstream: nvmap **handle 4**, size 0x201000, Annex-B written from offset 0.
+  One frame per submit: first NAL 0x65 (IDR), later 0x61 (non-IDR slice).
+  No SPS (0x67) / PPS (0x68) anywhere in nvmap memory.
+- Picture info: nvmap **handle 3**, 0x1000, struct at offset 0, matches the
+  emulator H.264 layout: stream_len u32@+0x48 (0x1bf, 0x997, 0x999),
+  slice_count@+0x4c = 1, coded size 0x78 x 0x44 MB = 1920x1088 (1920x1080 movie),
+  flags@+0xb0 = 0x9412 -> chroma_format_idc 1 (4:2:0), pic_order_cnt_type 2.
+- Command stream of the 7 movie submits carries only methods <= 0xc0
+  (0x80 SET_CODEC_ID = 3, 0xc0 EXECUTE), no 0x101/0x102 addresses: the SDK
+  passes picture-info/bitstream through the structures above, not the cmdbuf.
+- Diagnostic dead end recorded: the 00 00 01 scan of cmdbuf-referenced buffers
+  produced false positives (b3=0x00) — only the whole-nvmap scan with real NAL
+  header bytes found the stream.
+
+Next: SPS/PPS synthesis (yuzu H264::ComposeFrame algorithm, consult archived at
+/tmp/gpt-nvdec3.log) + libavcodec decode into the NV12 surface. Toolchain image
+`pmjs-arm64-spruce-local:20261002-gcc10` has no libavcodec, so a static ffmpeg
+build (or a minimal H.264 decoder) has to be vendored first.

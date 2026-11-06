@@ -1198,3 +1198,11 @@ build (or a minimal H.264 decoder) has to be vendored first.
 - Extracted `avcC`: profile 77 (Main), level 41, SPS 21 bytes `674d402995900780227e5c04400000fa00003a9821`, PPS `68eb8f20`.
 - `SPS + PPS + captured slice (h4 @0)` decodes in ffmpeg to 1920x1080 **with no error output**; the first frame is uniformly black, i.e. the fade-in frame, not concealment (the guessed High-profile/CABAC variant produced gray 128 with 8160 concealed MBs).
 - Consequence: parameters must come from the game's own avcC, not from guessed values; the port can either scan its own heap for `avcC` once at movie start or carry these bytes.
+
+## 2026-11-06 — NVDEC decode wired, first real frames (QEMU 0170f)
+
+- HLE decode lives in `native/nvdec264.h`, called from the `EXECUTE` submit path when `NX_NVDEC_DECODE=1`: prepends the game's own SPS/PPS, decodes the access unit with libavcodec and blits NV12 into the surface pair.
+- No `LD_LIBRARY_PATH`: it broke SDL EGL init (`NVN_SDL_PROVIDER_OPEN ... Could not initialize EGL`). The ffmpeg libs sit in `probe-nvdec/ff/` with `RUNPATH=$ORIGIN`, and the runtime dlopens `$ORIGIN/ff/libavcodec.so.58` by absolute path. libva/libdrm/libX11/libglib were stripped from `libavcodec` with `patchelf --remove-needed` so they cannot shadow the system graphics stack.
+- Run `0170f-1793938967` (out208 `4de3fac0…`): `sub=6`, `es=129`, `NVD_DEC got=0x1 n=0x81 w=0x780 h=0x438`, `NVD_BLIT` 1032 lines to luma `0xefbd4000` / chroma `0xefdd6000`, `frame=2331`. The decode path runs end to end.
+- Not yet proven: that the intro is visible (screens captured during the movie are dark, mean ≈0.04) and that the game leaves the movie for the menu.
+- VM notes: after a container restart the guest has no X server and no display manager — start `setsid nohup Xorg :0` inside the guest before any run, otherwise `guest-run.py` dies with `capture failed`; `podman rm -f infernax-qemu-system-0170` plus removing `qmp.sock` is needed if qemu was killed.

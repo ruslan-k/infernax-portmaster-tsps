@@ -1190,3 +1190,11 @@ build (or a minimal H.264 decoder) has to be vendored first.
 - Offline SPS/PPS synthesis (bit-writer per ITU-T H.264, 1920x1088 = 120x68 MB, 4:2:0) brute-forced 36 parameter combos against ffmpeg: `cabac=1, log2_max_frame_num_minus4=1, poc=2` is the only family that parses the slice header without an error line, but decoding still conceals 8160/8160 MBs → parameters are still wrong, not merely incomplete.
 - Also fixed: the `NV_BUF`/`NV_HEXD` dump helper prints BYTES, not words; all earlier "word" tables were byte tables (content interpretation unchanged, offsets unchanged).
 - Next: identify the intro MP4 through the fs/mmp read trace (the file lives inside a Unity bundle in romfs; no `ftyp`/`.mp4` string exists at the romfs top level), extract it locally, and take SPS/PPS verbatim from its avcC instead of guessing.
+
+### SPS/PPS recovered (2026-11-06, later)
+
+- The intro MP4 never appears as a file: it is read from a Unity bundle in small ROMFS chunks (max 0x8000), so no `ftyp` exists in the romfs image at the top level.
+- While the movie was playing (`0170f-1793929870`), scanning `/proc/<pid>/mem` of `terminator2d-ne` for `ftyp` found the plaintext MP4 in guest RAM (hit `0xcb765a3` and heap copies).
+- Extracted `avcC`: profile 77 (Main), level 41, SPS 21 bytes `674d402995900780227e5c04400000fa00003a9821`, PPS `68eb8f20`.
+- `SPS + PPS + captured slice (h4 @0)` decodes in ffmpeg to 1920x1080 **with no error output**; the first frame is uniformly black, i.e. the fade-in frame, not concealment (the guessed High-profile/CABAC variant produced gray 128 with 8160 concealed MBs).
+- Consequence: parameters must come from the game's own avcC, not from guessed values; the port can either scan its own heap for `avcC` once at movie start or carry these bytes.

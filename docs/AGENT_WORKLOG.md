@@ -1206,3 +1206,10 @@ build (or a minimal H.264 decoder) has to be vendored first.
 - Run `0170f-1793938967` (out208 `4de3fac0…`): `sub=6`, `es=129`, `NVD_DEC got=0x1 n=0x81 w=0x780 h=0x438`, `NVD_BLIT` 1032 lines to luma `0xefbd4000` / chroma `0xefdd6000`, `frame=2331`. The decode path runs end to end.
 - Not yet proven: that the intro is visible (screens captured during the movie are dark, mean ≈0.04) and that the game leaves the movie for the menu.
 - VM notes: after a container restart the guest has no X server and no display manager — start `setsid nohup Xorg :0` inside the guest before any run, otherwise `guest-run.py` dies with `capture failed`; `podman rm -f infernax-qemu-system-0170` plus removing `qmp.sock` is needed if qemu was killed.
+
+### Correct NV12 target found; picture still not sampled (2026-11-06)
+
+- The nvmap table at movie time contains `h=0x27 size=0x2fd000 addr=…` — exactly 1920×1088 NV12 (3 133 440 B). The earlier `0x1ff000`/`0x10f000` pairs are unrelated framebuffers, so the blit was moved to the single contiguous NV12 buffer (`nvd_blit_nv12`, out209 `35c22f38…`).
+- Run `0170f-1793941452`: `sub=6`, `dec=129`, `NVD_BLIT nv12=0xef942000` 129 times (one per access unit), `frame=2494`. Decode and blit are 1:1 with the submitted access units.
+- Screen during the movie stays at mean ≈0.04 (216 colours) — i.e. black; after the movie the game returns to the title (press Start+A again re-enters the same black movie sequence with the same 129 frames). So the game consumes the movie timeline but never samples our buffer.
+- Conclusion: the pixels land in a buffer the video quad does not read. Next probe must come from the submit stream itself (the NVDEC picture-info/output-surface field), not from guessing buffer sizes.

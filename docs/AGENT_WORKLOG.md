@@ -1258,3 +1258,12 @@ chroma `0x11D..0x12E`, codec `0x80`, execute `0xC0`. Offsets cross-checked again
   `NVD_TEXUPLOAD id=132 format=0x25 1280x720` every ~2 frames. The quad shows the title art
   **inverted** (white background, dark logo) - the NV12 -> RGB upload/format path is wrong,
   not the decode. ~90 s later the game returns to the title screen.
+
+### 2026-11-07 (intro sampling, run 0170f-1794009557)
+Title screen reached (9278-byte capture). After START the movie area is a **flat single colour**
+per frame (`colors=1`), cycling 23/19/20 -> black -> 16,1,0 -> 53,4,0 -> 71,5,0 -> black -> 91,7,1.
+Decoder statistics for the whole movie: `NVD_DEC=124`, `NVD_TEXUPLOAD=10`, and every submit carries the
+same `NVD_AUH len=0xa35 h=0x7b4a2b90` while only the serial increments.
+=> the decoder is fed one and the same 2613-byte buffer every frame (stale source buffer / wrong AU
+selection), and only 10 of 124 decoded frames ever reach a texture. Video is not playing; the quad shows
+a flat fill. This is the "identical AU hash" row of the decision table, not a rendering bug.

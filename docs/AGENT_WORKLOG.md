@@ -1296,3 +1296,15 @@ Fresh builds with the real catalogue, in order:
 - Movie stall evidence on the working binary `6a9ca55e` (run 0170f-1794010591, after the last new AU):
   the game issues 112 `ep=0x3f type=0x6 cmd=0x7` submits and 170 `cmd=0x8` polls - a submit/poll wait loop.
   It is waiting for a job completion we never signal, not for pixels.
+
+### 2026-11-07 (build-flag matrix, measured)
+- `-DZERO_ZX_GAME=1` + real catalogue: passes the shader gate, stops later in the sampler chain
+  (`NVN_LC2_TEXTURE_BINDING_UNDEFINED`, then `NVN_RENDER_TEXTURE_LIFETIME_FEEDBACK` for a texture whose
+  GL name was never created - lazy creation lives in nvn_textures.h:728).
+- `-DZERO_ZX_GAME=0`: stops at `NVN_RENDER_TARGET_VIEWS_REQUIRED` (this game passes render-target views;
+  only the ZERO path has the view backend). So 0 is not viable for Infernax.
+- No-ZERO build (out164's flag set) does not compile from the current sources: `nvn_framebuffers.h:48`
+  uses `ZERO_ZX_GAME` unconditionally, and out164's own tree is a WIP snapshot with undefined symbols
+  (`zero_texture_record_*`, `aw_clear_texture_admit`). There is no buildable pre-ZERO baseline on disk.
+=> the only viable direction is ZERO=1 + implement lazy texture creation/initialisation for a sampled
+   texture that has no GL name yet.

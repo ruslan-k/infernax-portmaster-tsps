@@ -6,7 +6,8 @@ static struct {uint32_t transfer_handle;uint64_t aruid,margin;unsigned open;} nv
 static struct {unsigned kind,client,open;uint32_t events[4];} nv_fds[32];
 /* nvmap handles: the SDK allocates one buffer per decoder surface and hands us the guest address
  * it already reserved; alloc only registers it, nothing is copied. */
-static struct {uint32_t handle;uint64_t size,addr;} nv_maps[64];
+#define NVMAP_MAX 256
+static struct {uint32_t handle;uint64_t size,addr;} nv_maps[NVMAP_MAX];
 static struct {uint32_t handle;uint32_t addr;} nv_cmdbufs[64];static unsigned nv_cmdbuf_count;/* lab: MapCommandBuffer table, see worklog */
 static const char *nv_paths[]={"/dev/nvmap","/dev/nvhost-ctrl","/dev/nvhost-ctrl-gpu","/dev/nvhost-as-gpu","/dev/nvhost-gpu","/dev/nvhost-nvdec","/dev/nvhost-vic"};
 static void nv_destroy(unsigned state) {
@@ -152,7 +153,7 @@ static int nv_dispatch(uint8_t *buffer,struct ipc_request *req,enum endpoint end
                 if(!in||!out||req->inputs[0].size<8)stop("INVALID_NVMAP_CREATE",pc,code,24);
                 uint32_t size=read32(in);
                 if(!size)stop("INVALID_NVMAP_SIZE",pc,code,24);
-                unsigned slot=0;while(slot<64&&nv_maps[slot].handle)slot++;
+                unsigned slot=0;while(slot<NVMAP_MAX&&nv_maps[slot].handle)slot++;
                 if(slot==64)stop("NVMAP_TABLE_FULL",pc,code,21);
                 nv_maps[slot].handle=slot+1;nv_maps[slot].size=size;nv_maps[slot].addr=0;
                 /* create is {u32 size in, u32 handle out}: the handle lands at offset 4, not 0. */
@@ -164,7 +165,7 @@ static int nv_dispatch(uint8_t *buffer,struct ipc_request *req,enum endpoint end
             if(code==0xc0200104U) {
                 if(!in||req->inputs[0].size<32)stop("INVALID_NVMAP_ALLOC",pc,code,24);
                 uint32_t hand=read32(in);uint64_t addr;memcpy(&addr,in+24,8);
-                if(!hand||hand>64||!nv_maps[hand-1].handle)stop("INVALID_NVMAP_HANDLE",pc,hand,24);
+                if(!hand||hand>NVMAP_MAX||!nv_maps[hand-1].handle)stop("INVALID_NVMAP_HANDLE",pc,hand,24);
                 uint64_t size=nv_maps[hand-1].size;
                 struct region rg=query(addr);
                 if(!addr||!rg.state||addr+size>rg.base+rg.size)stop("NVMAP_ALLOC_RANGE",pc,addr,24);
@@ -225,7 +226,7 @@ static int nv_dispatch(uint8_t *buffer,struct ipc_request *req,enum endpoint end
                 for(uint32_t i=0;i<ncb&&16+i*12+12<=req->inputs[0].size;i++) {
                     uint32_t mem=read32(sp+16+i*12),off=read32(sp+20+i*12),words=read32(sp+24+i*12);
                     uint64_t base=0;
-                    for(unsigned j=0;j<64;j++)if(nv_maps[j].handle==mem&&nv_maps[j].addr){base=nv_maps[j].addr;break;}
+                    for(unsigned j=0;j<NVMAP_MAX;j++)if(nv_maps[j].handle==mem&&nv_maps[j].addr){base=nv_maps[j].addr;break;}
                     struct line cl={0};text(&cl,"NV_CMDBUF_ENTRY mem=");hex(&cl,mem);text(&cl," off=");hex(&cl,off);
                     text(&cl," words=");hex(&cl,words);text(&cl," base=");hex(&cl,(unsigned)base);emit(&cl);
                     if(!base)continue;
@@ -240,7 +241,7 @@ static int nv_dispatch(uint8_t *buffer,struct ipc_request *req,enum endpoint end
                        from the emulator layout: stream_len at +0x48, coded width/height in
                        macroblocks at +0x64/+0x68. Log every aligned candidate. */
                     {static int hunt=0;if(hunt<40){hunt++;
-                     for(unsigned j=0;j<64;j++)if(nv_maps[j].handle&&nv_maps[j].addr&&nv_maps[j].size>0x2fc){
+                     for(unsigned j=0;j<NVMAP_MAX;j++)if(nv_maps[j].handle&&nv_maps[j].addr&&nv_maps[j].size>0x2fc){
                         uint8_t *b3=(void *)(uintptr_t)nv_maps[j].addr;uint64_t n3=nv_maps[j].size-0x2fc;
                         if(n3>0x8000)n3=0x8000;
                         for(uint64_t o=0;o<n3;o+=4){
@@ -256,13 +257,13 @@ static int nv_dispatch(uint8_t *buffer,struct ipc_request *req,enum endpoint end
                     /* Lab probe: scan EVERY mapped nvmap buffer for a real Annex-B NAL
                        header (0x67 SPS / 0x68 PPS / 0x65 IDR / slice types), not just the
                        cmdbuf we were handed, and publish the nvmap table once. */
-                    {static int once=0;if(!once||!nvd_seq_done){once=1;for(unsigned j=0;j<64;j++)if(nv_maps[j].handle){
+                    {static int once=0;if(!once||!nvd_seq_done){once=1;for(unsigned j=0;j<NVMAP_MAX;j++)if(nv_maps[j].handle){
                         {struct region r3=query(nv_maps[j].addr);if(r3.state){uint64_t lim3=nv_maps[j].size;uint64_t cap3=nv_maps[j].handle==3?0x300:(nv_maps[j].handle==4?0x2000:0x100);if(lim3>cap3)lim3=cap3;
                          for(uint64_t k3=0;k3<lim3;k3+=0x100)nv_dump("NV_BUF ",(void *)(uintptr_t)(nv_maps[j].addr+k3),lim3-k3<0x100?lim3-k3:0x100);}}
                         struct line tl={0};text(&tl,"NV_MAPTABLE h=");hex(&tl,nv_maps[j].handle);
                         text(&tl," size=");hex(&tl,(unsigned)nv_maps[j].size);text(&tl," addr=");hex(&tl,(unsigned)nv_maps[j].addr);emit(&tl);}}}
                     }}
-                    for(unsigned j=0;j<64;j++)if(nv_maps[j].handle&&nv_maps[j].addr){
+                    for(unsigned j=0;j<NVMAP_MAX;j++)if(nv_maps[j].handle&&nv_maps[j].addr){
                         uint64_t b2=nv_maps[j].addr,lim2=nv_maps[j].size;if(lim2>0x400000)lim2=0x400000;int h2=0;
                         for(uint64_t k=0;k+4<lim2&&h2<3;k++){
                             if(!(k&0xfff)){struct region r2=query(b2+k);if(!r2.state)break;}
@@ -309,7 +310,7 @@ static int nv_dispatch(uint8_t *buffer,struct ipc_request *req,enum endpoint end
                                         {char ap[64];FILE*pf;snprintf(ap,sizeof ap,"/tmp/aus/au%03u.h264",(unsigned)nvd_decoded);
                                             if((pf=fopen(ap,"wb"))){fwrite(aup,1,alen,pf);fclose(pf);}}}
                                     if(getenv("NVD_CAND")&&nvd_serial<50){
-                                        for(unsigned j4=0;j4<64;j4++)if(nv_maps[j4].addr&&nv_maps[j4].size>=0x400){
+                                        for(unsigned j4=0;j4<NVMAP_MAX;j4++)if(nv_maps[j4].addr&&nv_maps[j4].size>=0x400){
                                             uint8_t *mb=(void *)(uintptr_t)nv_maps[j4].addr;uint64_t ml=nv_maps[j4].size;if(ml>0x2000)ml=0x2000;
                                             for(uint64_t t2=0;t2+4<ml;t2++){if(mb[t2]==0&&mb[t2+1]==0&&mb[t2+2]==1&&(mb[t2+3]==0x65||mb[t2+3]==0x61||mb[t2+3]==0x67)){
                                                 uint32_t h4=2166136261u;unsigned l4=(unsigned)((ml-t2)>0x800?0x800:(ml-t2));
@@ -321,11 +322,11 @@ static int nv_dispatch(uint8_t *buffer,struct ipc_request *req,enum endpoint end
                                     struct line d2={0};text(&d2,"NVD_DEC got=");hex(&d2,got);text(&d2," alen=");hex(&d2,alen);
                                     text(&d2," n=");hex(&d2,nvd_decoded);text(&d2," w=");hex(&d2,nvd_w);text(&d2," h=");hex(&d2,nvd_h);
                                     text(&d2," rdy=");hex(&d2,nvd_ready);text(&d2," s=");hex(&d2,nvd_send_rc);text(&d2," rv=");hex(&d2,nvd_recv_rc);emit(&d2);
-                                    for(unsigned j3=0;got&&j3<64;j3++)if(nv_maps[j3].addr&&nv_maps[j3].size==0x2fd000){
+                                    for(unsigned j3=0;got&&j3<NVMAP_MAX;j3++)if(nv_maps[j3].addr&&nv_maps[j3].size==0x2fd000){
                                         nvd_blit_nv12((void *)(uintptr_t)nv_maps[j3].addr,1920,1080);
                                         struct line bl={0};text(&bl,"NVD_BLIT nv12=");hex(&bl,(unsigned)nv_maps[j3].addr);emit(&bl);}
                                     if(getenv("NVD_TESTPAT")&&nvd_decoded==40){
-                                        for(unsigned j5=0;j5<64;j5++)if(nv_maps[j5].addr&&nv_maps[j5].size==0x2fd000){
+                                        for(unsigned j5=0;j5<NVMAP_MAX;j5++)if(nv_maps[j5].addr&&nv_maps[j5].size==0x2fd000){
                                             uint8_t *pb=(void *)(uintptr_t)nv_maps[j5].addr;
                                             memset(pb,235,(size_t)(1920*1080));memset(pb+1920*1080,128,(size_t)(960*540*2));
                                             struct line tpf={0};text(&tpf,"NVD_TESTPAT addr=");hex(&tpf,(unsigned)nv_maps[j5].addr);emit(&tpf);}

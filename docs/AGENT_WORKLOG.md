@@ -1267,3 +1267,18 @@ same `NVD_AUH len=0xa35 h=0x7b4a2b90` while only the serial increments.
 => the decoder is fed one and the same 2613-byte buffer every frame (stale source buffer / wrong AU
 selection), and only 10 of 124 decoded frames ever reach a texture. Video is not playing; the quad shows
 a flat fill. This is the "identical AU hash" row of the decision table, not a rendering bug.
+
+### 2026-11-07 (build recipe unlocked)
+- The shader catalogue is NOT in the tree: `nvn_shader_sources.h` is generated, and `build.sh` says
+  "Unset = the empty stub". Every fresh build therefore died in `nvn_program_link` with
+  `ZERO_SHADER_EXECUTION_UNSUPPORTED reason=stub catalogue: no translated shaders`. The real catalogue
+  lives next to the build dirs, e.g. `out166/shaders/nvn_shader_sources.h` (81 KB, 22 stages).
+  Working recipe: `COTM_CC=gcc COTM_SHADERS_DIR=/work/shaders ./source90-build_infernax.sh ./source ./image ./outN`.
+- With the catalogue the build gets past shaders and stops later, in order:
+  `NVN_PROGRAM_INVALID` (program 0 bound) -> `NVN_PROGRAM_BOUND_STAGE_STALE` -> with both relaxed
+  `ZERO_SHADER_TRANSLATION_REQUIRED` (ZERO_ZX_GAME=0 still runs that check) -> with the catalogue
+  `NVN_LC2_TEXTURE_BINDING_UNDEFINED detail=0x150 at nvn_render.h:1251`.
+- `ZERO_ZX_GAME` must stay 1 for this game (0 rejects render-target views: `NVN_RENDER_TARGET_VIEWS_REQUIRED`).
+  The two "tolerant" edits used while bisecting were reverted from the tree.
+- Map table raised to `NVMAP_MAX 256` (was 64): the guest allocates handle 0x1..0x3f exactly during the
+  first seconds, so the table is saturated before the movie starts.

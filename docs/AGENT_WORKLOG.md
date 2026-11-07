@@ -1282,3 +1282,17 @@ a flat fill. This is the "identical AU hash" row of the decision table, not a re
   The two "tolerant" edits used while bisecting were reverted from the tree.
 - Map table raised to `NVMAP_MAX 256` (was 64): the guest allocates handle 0x1..0x3f exactly during the
   first seconds, so the table is saturated before the movie starts.
+
+### 2026-11-07 (render chain, bisect tolerances)
+Fresh builds with the real catalogue, in order:
+1. `NVN_PROGRAM_INVALID` (program 0 bound) - tolerated in the bisect only.
+2. `NVN_PROGRAM_BOUND_STAGE_STALE` - same.
+3. `NVN_LC2_TEXTURE_BINDING_UNDEFINED detail=0x150`: `momo_texture_unit(0x150)` -> slot 1, aligned, but
+   `texture_known[1][1]` never set; the game binds unit 1 only later. Tolerated: prints `NVN_SAMPLER_UNBOUND`.
+4. `NVN_RENDER_TEXTURE_LIFETIME_FEEDBACK detail=0xa60`: `MOMO_SAMPLER_REJECT handle=0xa60 sampled-id=115
+   object=0x3a4802698 pool=0x3b0c00000+0x33e000 size=128x1 | target-id=133 ... same-object=0`. The texture
+   object exists but has no GL name yet (`t->name==0`); GL names are created lazily in nvn_textures.h:728.
+   This is a missing feature (lazy texture creation), not a flag.
+- Movie stall evidence on the working binary `6a9ca55e` (run 0170f-1794010591, after the last new AU):
+  the game issues 112 `ep=0x3f type=0x6 cmd=0x7` submits and 170 `cmd=0x8` polls - a submit/poll wait loop.
+  It is waiting for a job completion we never signal, not for pixels.

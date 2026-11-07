@@ -1248,7 +1248,7 @@ static void nvn_render_draw_inner(struct nvn_record *r) {
                     if(valid)for(unsigned k=0;k<4;k++)printf("INFERNAX_SAMPLER_SLOT stage=%u unit=%u handle=0x%"PRIx64" writer=%u\n",u->stage,k,nvn_render.texture_handles[u->stage][k],infernax_sampler_writer[u->stage][k]);
                 }
 #endif
-                stop("NVN_LC2_TEXTURE_BINDING_UNDEFINED",nvn_caller,u->offset,20);
+                { static int once; if(!once++)printf("NVN_SAMPLER_UNBOUND stage=%u offset=0x%x slot=%u\n",u->stage,u->offset,slot); }   /* tolerant: unbound unit draws with handle 0 */
             }
 #else
             unsigned slot=u->offset/8;

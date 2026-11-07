@@ -1308,3 +1308,15 @@ Fresh builds with the real catalogue, in order:
   (`zero_texture_record_*`, `aw_clear_texture_admit`). There is no buildable pre-ZERO baseline on disk.
 => the only viable direction is ZERO=1 + implement lazy texture creation/initialisation for a sampled
    texture that has no GL name yet.
+
+### 2026-11-07 (BREAKTHROUGH: picture + movie on a fresh build, sha256 fec1cf77...)
+Root cause of the black screen on every fresh build: the 64 KB constant banks were being uploaded as
+`glUniform4fv(..., 4096 vec4)` (29320x GL_INVALID_OPERATION per run, shaders read zeros). The texelFetch
+bank path is compiled only under `-DINFERNAX_CBUF_SAMPLERS`, and our build.sh had lost that define.
+Fix: `-DMOMO_SHADERS=1 -DINFERNAX_CBUF_SAMPLERS=1 -DZERO_ZX_GAME=1 -DT2_SWITCH_INPUT=1`.
+Measured after the fix (run 0170f-1794020149): 0 stop statuses, frame 1 nonblack=921600, GL errors 0,
+NVD_DEC 149 / NVD_TEXUPLOAD 11 - the intro movie decodes and draws; title screen renders with logo,
+version 1.05.017 and credits (screenshot /tmp/iv_v37.png).
+Also needed for this tree: sampling an unbound unit / a texture with no GL name / a missing sampler
+descriptor no longer stops - it falls back to a 1x1 white texture (nvn_render.h).
+Next: title -> main menu -> new game.

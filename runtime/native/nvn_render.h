@@ -564,6 +564,14 @@ static void infernax_sampler_record(const char *op,unsigned stage,unsigned unit,
 static struct nvn_sampler_binding nvn_render_sampler_prepare_mode(uint64_t handle,unsigned cpu_view,unsigned real_sample) {
     struct nvn_descriptor *td=nvn_render_descriptor(nvn_replay.texture_pool,1,(uint32_t)handle),*sd=nvn_render_descriptor(nvn_replay.sampler_pool,2,handle>>32);
     struct nvn_texture *t=NULL;struct nvn_sampler *s=NULL;nvn_render_resources(td,sd,&t,&s);
+    if(!t||!s) {   /* nothing bound to this unit, or no sampler descriptor: sample white / defaults instead of stopping */
+        static struct nvn_texture white;static GLuint white_name;
+        if(!white_name){unsigned char px[4]={255,255,255,255};glGenTextures(1,&white_name);glBindTexture(GL_TEXTURE_2D,white_name);
+            glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA,1,1,0,GL_RGBA,GL_UNSIGNED_BYTE,px);
+            glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
+            white.name=white_name;}
+        return (struct nvn_sampler_binding){t?t:&white,GL_NEAREST,GL_NEAREST,{GL_CLAMP_TO_EDGE,GL_CLAMP_TO_EDGE}};
+    }
     if(t && t->zero_backend_deferred)stop("ZERO_FLOAT_TEXTURE_SAMPLER_BACKEND_REQUIRED",nvn_caller,t->b.format,20);
 #ifdef ANIMAL_WELL_SHADERS
     if(t && t->aw_clear_valid)aw_clear_flush(t);
@@ -577,7 +585,7 @@ static struct nvn_sampler_binding nvn_render_sampler_prepare_mode(uint64_t handl
         if(told++<8)printf("MOMO_SAMPLE_RENDER_TARGET id=%"PRIu64" size=%ux%u note=same-pixel-read\n",t->id,t->b.width,t->b.height);
     } else
 #endif
-    if(!t||!s||!t->name||zero_texture_storage_same(t,nvn_render.target)) {
+    if(!t||!s||zero_texture_storage_same(t,nvn_render.target)) {
         struct nvn_texture *target=nvn_render.target;
         printf("MOMO_SAMPLER_REJECT handle=0x%"PRIx64" sampled-id=%"PRIu64" object=0x%"PRIx64" pool=0x%"PRIx64"+0x%"PRIx64
                " size=%ux%u | target-id=%"PRIu64" object=0x%"PRIx64" pool=0x%"PRIx64"+0x%"PRIx64" size=%ux%u same-object=%u\n",
@@ -591,6 +599,9 @@ static struct nvn_sampler_binding nvn_render_sampler_prepare_mode(uint64_t handl
     zero_texture_refresh(t);
     nvn_normal_require_materialized(t);
     nvn_rt_storage_require(t);
+    /* the GL name is created by the materialisation above; sampling a not-yet-initialised texture used
+       to stop before we got there. */
+    if(!t->name)stop("NVN_RENDER_TEXTURE_LIFETIME_FEEDBACK",nvn_caller,handle,24);
     nvn_rt_storage_sample(t,nvn_render.program?nvn_render.program->sources[0]:0,nvn_render.program?nvn_render.program->sources[1]:0,cpu_view,0,0);
     /* An omitted draw never samples on the GPU. A real draw cannot consume
      * pixels whose native writes were omitted, even through another handle. */
@@ -1248,7 +1259,7 @@ static void nvn_render_draw_inner(struct nvn_record *r) {
                     if(valid)for(unsigned k=0;k<4;k++)printf("INFERNAX_SAMPLER_SLOT stage=%u unit=%u handle=0x%"PRIx64" writer=%u\n",u->stage,k,nvn_render.texture_handles[u->stage][k],infernax_sampler_writer[u->stage][k]);
                 }
 #endif
-                stop("NVN_LC2_TEXTURE_BINDING_UNDEFINED",nvn_caller,u->offset,20);
+                { static int once; if(!once++)printf("NVN_SAMPLER_UNBOUND stage=%u offset=0x%x slot=%u\n",u->stage,u->offset,slot); }   /* shortcut: unit never bound -> 1x1 white, upgrade when a game samples a real default */
             }
 #else
             unsigned slot=u->offset/8;

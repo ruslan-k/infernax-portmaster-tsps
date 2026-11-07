@@ -54,7 +54,7 @@ done
 # test it are included before the catalogue.
 # Input is included before the shader catalogue: select T2's physical Switch layout here,
 # independently of the later T2_SHADERS define. Other lineage builds keep their existing map.
-"$COTM_CC" -O2 -Wall -Wextra -Werror -Wno-error -DMOMO_SHADERS=1 -DZERO_ZX_GAME=1 -DT2_SWITCH_INPUT=1 \
+"$COTM_CC" -O2 -Wall -Wextra -Werror -Wno-error -DMOMO_SHADERS=1 -DINFERNAX_CBUF_SAMPLERS=1 -DZERO_ZX_GAME=1 -DT2_SWITCH_INPUT=1 \
     -DMESA_EGL_NO_X11_HEADERS -fno-strict-aliasing -pthread -I"$1" \
     -I"$COTM_NXAUDIO_DIR" -I"$COTM_NXINPUT_DIR/include" \
     -I"$COTM_NXINPUT_DIR/engine-glue" -I"$COTM_NXCOMPAT_DIR/include" -I"$shaders" \
